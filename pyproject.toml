@@ -1,0 +1,156 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "localai"
+version = "0.1.0"
+description = "A local-first, agentic terminal UI for Ollama models with a centralised permissions engine."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "localai contributors" }]
+keywords = ["ollama", "llm", "tui", "textual", "agent", "local-first"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Utilities",
+]
+
+# Runtime dependencies are deliberately few. Every one of these is widely used and
+# actively maintained; see docs/security-model.md#dependency-policy for the rationale
+# and for why we implement Recycle Bin deletion via ctypes rather than adding send2trash.
+dependencies = [
+    "httpx>=0.27",      # async HTTP to the local Ollama daemon; no telemetry
+    "textual>=1.0",     # TUI framework
+    "rich>=13.7",       # terminal rendering (already a Textual dependency)
+    "pydantic>=2.9",    # config + schema validation, JSON Schema generation
+    "tomli-w>=1.0",     # TOML *writing* (tomllib in stdlib is read-only)
+]
+
+[project.optional-dependencies]
+# Phase 2 document extraction. Kept optional so the core install stays small and
+# so `localai doctor` can report precisely which extractors are unavailable.
+extract = [
+    "pypdf>=4.2",
+    "python-docx>=1.1",
+    "openpyxl>=3.1",
+    "python-pptx>=0.6.23",
+    "striprtf>=0.0.26",
+    "beautifulsoup4>=4.12",
+]
+api = ["fastapi>=0.111", "uvicorn>=0.30"]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.6",
+    "mypy>=1.11",
+]
+
+[project.scripts]
+localai = "localai.cli.main:main"
+
+[project.urls]
+Documentation = "https://github.com/localai/localai/tree/main/docs"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+localai = ["storage/migrations/*.sql", "schemas/*.json", "ui/*.tcss"]
+
+# ---------------------------------------------------------------------------
+# Tooling
+# ---------------------------------------------------------------------------
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "A", "C4", "PTH", "RUF", "S"]
+ignore = [
+    "S603",  # subprocess call - we execute shell deliberately, gated by the permissions engine
+    "S607",  # partial executable path - resolved explicitly in shell.py
+    "E501",  # long lines are handled by the formatter
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Asserts and dummy secrets are expected in tests.
+"tests/**" = ["S101", "S108", "S105", "S106", "PLR2004"]
+
+# RUF012: a Tool's `parameters` is a JSON Schema declared once per class and never
+# mutated - the class body is the correct home for it, and ClassVar on every
+# subclass would be noise. Enforced instead by test_every_tool_has_a_description_
+# and_schema, which asserts the shape.
+"src/localai/tools/*.py" = ["RUF012"]
+
+# S602 (shell=True risk): shell.py executes commands by design, with an explicit argv
+# list and no interpolation by us. S101 as below.
+"src/localai/tools/shell.py" = ["RUF012", "S602", "S101"]
+
+# S608: these queries interpolate only internally-generated fragments - column
+# names from a fixed literal set and WHERE clauses assembled from a hard-coded
+# table in the same function. Every *value* is bound as a parameter. See
+# docs/database-schema.md#query-construction.
+"src/localai/storage/usage.py" = ["S608", "S101"]
+"src/localai/storage/audit_store.py" = ["S608"]
+
+# S101: asserts here are invariant checks on our own aggregates and internal state,
+# not input validation. Input validation raises a typed error from localai.errors.
+"src/localai/cli/main.py" = ["S101"]
+
+# RUF001/2/3 flag "ambiguous" Unicode - box drawing, block elements, arrows. That is
+# precisely what the model sigils, meters and icons are made of, so the rule has
+# nothing useful to say about these three modules. Every glyph has an ASCII fallback
+# (see ICONS_ASCII and ModelIdentity.sigil_ascii), which is what actually protects
+# terminals that cannot render them.
+"src/localai/ui/art.py" = ["RUF001", "RUF002", "RUF003"]
+"src/localai/ui/widgets.py" = ["RUF001", "RUF002", "RUF003"]
+"src/localai/ui/screens.py" = ["RUF001", "RUF002", "RUF003", "N811"]
+"src/localai/ui/app.py" = ["S101", "RUF001", "RUF002", "RUF003"]
+"src/localai/ui/commands.py" = ["RUF001", "RUF002", "RUF003"]
+"tests/integration/test_ui_flows.py" = ["RUF001", "RUF002", "RUF003", "SLF001"]
+
+[tool.mypy]
+python_version = "3.11"
+files = ["src/localai"]
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+no_implicit_optional = true
+check_untyped_defs = true
+
+# Security-sensitive modules are held to a stricter standard. Loosening any of these
+# overrides is itself a security-relevant change - see docs/security-model.md.
+[[tool.mypy.overrides]]
+module = [
+    "localai.permissions.*",
+    "localai.safety.*",
+    "localai.tools.shell",
+    "localai.tools.fs_write",
+]
+disallow_untyped_defs = true
+disallow_any_generics = true
+strict_equality = true
+warn_return_any = true
+
+[[tool.mypy.overrides]]
+module = ["textual.*", "tomli_w.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "-q --strict-markers"
+markers = [
+    "integration: exercises real subprocesses, sqlite files or a live Ollama daemon",
+    "security: asserts a permission or path-safety boundary; never skip these",
+]

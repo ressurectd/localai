@@ -1,0 +1,43 @@
+# Trusted-workspace configuration.
+#
+# The model works freely inside directories you have explicitly trusted, and asks
+# before doing anything outside them. A good default once you know what you want the
+# model working on.
+
+default_model = "qwen3:8b"
+
+[permissions]
+mode = "workspace"
+
+[[permissions.workspaces]]
+path = "D:/Projects/current"
+name = "current project"
+allow_write = true
+allow_execute = false      # shell execution still asks, even in a trusted workspace
+
+[[permissions.workspaces]]
+path = "D:/Archive"
+name = "archive (read only)"
+allow_write = false
+allow_execute = false
+
+# Let routine, read-only git commands run without prompting.
+[[permissions.rules]]
+id = "git-readonly"
+effect = "allow"
+note = "routine git inspection"
+tools = ["run_powershell"]
+command_patterns = ["git status*", "git log*", "git diff*", "git branch*"]
+max_risk = "execute"
+
+# Never touch the credential store, whatever the mode.
+[[permissions.rules]]
+id = "deny-credentials"
+effect = "deny"
+note = "belt and braces on top of the built-in sensitive-path check"
+paths = ["*/.ssh/*", "*/.aws/*", "*/AppData/Roaming/Microsoft/Credentials/*"]
+
+[safety]
+backup_before_modify = true
+use_recycle_bin = true
+diff_preview = true

@@ -1,0 +1,772 @@
+{
+  "$defs": {
+    "AgentConfig": {
+      "additionalProperties": false,
+      "description": "Guard rails for the tool-call loop.",
+      "properties": {
+        "max_tool_iterations": {
+          "default": 25,
+          "minimum": 1,
+          "title": "Max Tool Iterations",
+          "type": "integer"
+        },
+        "max_turn_seconds": {
+          "default": 900.0,
+          "exclusiveMinimum": 0,
+          "title": "Max Turn Seconds",
+          "type": "number"
+        },
+        "max_identical_calls": {
+          "default": 3,
+          "description": "Abort if the model repeats one tool call with identical args.",
+          "minimum": 1,
+          "title": "Max Identical Calls",
+          "type": "integer"
+        },
+        "structured_fallback": {
+          "default": true,
+          "description": "Emulate tool calling for models without native support.",
+          "title": "Structured Fallback",
+          "type": "boolean"
+        },
+        "auto_compact_at": {
+          "default": 0.85,
+          "description": "Fraction of context used before offering compaction.",
+          "exclusiveMinimum": 0,
+          "maximum": 1.0,
+          "title": "Auto Compact At",
+          "type": "number"
+        }
+      },
+      "title": "AgentConfig",
+      "type": "object"
+    },
+    "GenerationOptions": {
+      "additionalProperties": false,
+      "description": "Ollama generation parameters. ``None`` means \"let Ollama use its default\".",
+      "properties": {
+        "temperature": {
+          "anyOf": [
+            {
+              "maximum": 2.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": 0.7,
+          "title": "Temperature"
+        },
+        "top_p": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Top P"
+        },
+        "top_k": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Top K"
+        },
+        "min_p": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Min P"
+        },
+        "repeat_penalty": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Repeat Penalty"
+        },
+        "seed": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Set for reproducible sampling.",
+          "title": "Seed"
+        },
+        "num_ctx": {
+          "anyOf": [
+            {
+              "minimum": 256,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Context window in tokens. Defaults to the model's own.",
+          "title": "Num Ctx"
+        },
+        "num_predict": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "-1 for unlimited.",
+          "title": "Num Predict"
+        },
+        "stop": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Stop",
+          "type": "array"
+        }
+      },
+      "title": "GenerationOptions",
+      "type": "object"
+    },
+    "ModelProfile": {
+      "additionalProperties": false,
+      "description": "A named, reusable bundle of model + prompt + generation settings.",
+      "properties": {
+        "name": {
+          "pattern": "^[A-Za-z0-9._-]{1,64}$",
+          "title": "Name",
+          "type": "string"
+        },
+        "model": {
+          "description": "Ollama model tag, e.g. 'qwen3:8b'.",
+          "title": "Model",
+          "type": "string"
+        },
+        "description": {
+          "default": "",
+          "title": "Description",
+          "type": "string"
+        },
+        "system_prompt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "System Prompt"
+        },
+        "think": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "enum": [
+                "low",
+                "medium",
+                "high"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Enable reasoning on models that support it. None = model default.",
+          "title": "Think"
+        },
+        "keep_alive": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Ollama keep_alive, e.g. '30m' or '-1' to pin in memory.",
+          "title": "Keep Alive"
+        },
+        "options": {
+          "$ref": "#/$defs/GenerationOptions"
+        }
+      },
+      "required": [
+        "name",
+        "model"
+      ],
+      "title": "ModelProfile",
+      "type": "object"
+    },
+    "OllamaConfig": {
+      "additionalProperties": false,
+      "description": "Connection settings for the local Ollama daemon.",
+      "properties": {
+        "host": {
+          "default": "127.0.0.1",
+          "description": "Loopback by default. See privacy docs.",
+          "title": "Host",
+          "type": "string"
+        },
+        "port": {
+          "default": 11434,
+          "maximum": 65535,
+          "minimum": 1,
+          "title": "Port",
+          "type": "integer"
+        },
+        "scheme": {
+          "default": "http",
+          "enum": [
+            "http",
+            "https"
+          ],
+          "title": "Scheme",
+          "type": "string"
+        },
+        "request_timeout_s": {
+          "default": 120.0,
+          "exclusiveMinimum": 0,
+          "title": "Request Timeout S",
+          "type": "number"
+        },
+        "connect_timeout_s": {
+          "default": 5.0,
+          "exclusiveMinimum": 0,
+          "title": "Connect Timeout S",
+          "type": "number"
+        },
+        "default_keep_alive": {
+          "default": "5m",
+          "title": "Default Keep Alive",
+          "type": "string"
+        }
+      },
+      "title": "OllamaConfig",
+      "type": "object"
+    },
+    "PermissionMode": {
+      "description": "How much autonomy tool calls are granted by default.\n\nThese are *defaults*: an explicit deny rule still wins in every mode, and the\nprotected-path and kill-switch checks run before the mode is even consulted.",
+      "enum": [
+        "manual",
+        "auto",
+        "workspace",
+        "bypass"
+      ],
+      "title": "PermissionMode",
+      "type": "string"
+    },
+    "PermissionRuleModel": {
+      "additionalProperties": false,
+      "description": "A persisted permission rule. Mirrors ``schemas/permission-rule.schema.json``.",
+      "properties": {
+        "id": {
+          "pattern": "^[A-Za-z0-9._:-]{1,64}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "effect": {
+          "enum": [
+            "allow",
+            "deny",
+            "confirm"
+          ],
+          "title": "Effect",
+          "type": "string"
+        },
+        "note": {
+          "default": "",
+          "title": "Note",
+          "type": "string"
+        },
+        "tools": {
+          "description": "Tool names or fnmatch globs. Empty = any tool.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Tools",
+          "type": "array"
+        },
+        "paths": {
+          "description": "Path globs. Empty = any path.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Paths",
+          "type": "array"
+        },
+        "command_patterns": {
+          "description": "fnmatch globs matched against the full command line.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Command Patterns",
+          "type": "array"
+        },
+        "max_risk": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RiskLevel"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Rule applies only at or below this risk level."
+        },
+        "interfaces": {
+          "description": "Empty = every interface.",
+          "items": {
+            "enum": [
+              "tui",
+              "cli",
+              "api",
+              "mcp"
+            ],
+            "type": "string"
+          },
+          "title": "Interfaces",
+          "type": "array"
+        },
+        "allow_sensitive": {
+          "default": false,
+          "description": "Required for an allow rule to cover credential-bearing paths.",
+          "title": "Allow Sensitive",
+          "type": "boolean"
+        },
+        "expires_at": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Unix timestamp; None = never.",
+          "title": "Expires At"
+        }
+      },
+      "required": [
+        "id",
+        "effect"
+      ],
+      "title": "PermissionRuleModel",
+      "type": "object"
+    },
+    "PermissionsConfig": {
+      "additionalProperties": false,
+      "description": "Permission policy: mode, workspaces, rules and the global kill switch.",
+      "properties": {
+        "mode": {
+          "$ref": "#/$defs/PermissionMode",
+          "default": "auto"
+        },
+        "workspaces": {
+          "items": {
+            "$ref": "#/$defs/WorkspaceConfig"
+          },
+          "title": "Workspaces",
+          "type": "array"
+        },
+        "rules": {
+          "items": {
+            "$ref": "#/$defs/PermissionRuleModel"
+          },
+          "title": "Rules",
+          "type": "array"
+        },
+        "kill_switch": {
+          "default": false,
+          "description": "When true, every mutating and executing tool is denied on every interface.",
+          "title": "Kill Switch",
+          "type": "boolean"
+        },
+        "confirm_outside_workspace": {
+          "default": true,
+          "description": "Require confirmation for reads outside a trusted workspace.",
+          "title": "Confirm Outside Workspace",
+          "type": "boolean"
+        },
+        "bypass_confirmation_phrase": {
+          "default": "I understand the risk",
+          "description": "Typed verbatim to enter bypass mode. Never stored as accepted.",
+          "title": "Bypass Confirmation Phrase",
+          "type": "string"
+        },
+        "max_high_risk_per_minute": {
+          "default": 20,
+          "description": "Rate limit on execute/destructive actions. 0 disables.",
+          "minimum": 0,
+          "title": "Max High Risk Per Minute",
+          "type": "integer"
+        }
+      },
+      "title": "PermissionsConfig",
+      "type": "object"
+    },
+    "PrivacyConfig": {
+      "additionalProperties": false,
+      "description": "Privacy posture. Defaults are the most private possible.",
+      "properties": {
+        "network_disabled": {
+          "default": false,
+          "description": "Block every tool that would make a network request. Ollama on loopback is unaffected; a non-loopback Ollama host is blocked.",
+          "title": "Network Disabled",
+          "type": "boolean"
+        },
+        "telemetry": {
+          "const": false,
+          "default": false,
+          "description": "Structurally impossible to enable. The project ships no telemetry code.",
+          "title": "Telemetry",
+          "type": "boolean"
+        },
+        "warn_on_external_requests": {
+          "default": true,
+          "title": "Warn On External Requests",
+          "type": "boolean"
+        }
+      },
+      "title": "PrivacyConfig",
+      "type": "object"
+    },
+    "RiskLevel": {
+      "description": "Risk classification assigned to each tool, ordered by severity.\n\nAll four comparison operators are defined explicitly and compare :attr:`rank`.\nThis is not optional decoration: ``StrEnum`` inherits ``str``'s comparisons, so\nomitting any one of them silently falls back to *alphabetical* ordering --\n``\"read\" >= \"execute\"`` is True because 'r' sorts after 'e'. That would make\n``risk >= RiskLevel.EXECUTE`` accept a read, and every severity gate in the\npermissions engine would compare spelling instead of severity.",
+      "enum": [
+        "read",
+        "write",
+        "destructive",
+        "execute",
+        "privileged"
+      ],
+      "title": "RiskLevel",
+      "type": "string"
+    },
+    "SafetyConfig": {
+      "additionalProperties": false,
+      "description": "Reversibility and blast-radius controls, independent of permission mode.",
+      "properties": {
+        "dry_run": {
+          "default": false,
+          "description": "Simulate mutations; never write.",
+          "title": "Dry Run",
+          "type": "boolean"
+        },
+        "read_only": {
+          "default": false,
+          "description": "Deny every non-read tool outright.",
+          "title": "Read Only",
+          "type": "boolean"
+        },
+        "backup_before_modify": {
+          "default": true,
+          "title": "Backup Before Modify",
+          "type": "boolean"
+        },
+        "use_recycle_bin": {
+          "default": true,
+          "description": "Delete to the Recycle Bin rather than permanently.",
+          "title": "Use Recycle Bin",
+          "type": "boolean"
+        },
+        "git_checkpoints": {
+          "default": false,
+          "description": "Commit a checkpoint to the workspace repo before mutations.",
+          "title": "Git Checkpoints",
+          "type": "boolean"
+        },
+        "diff_preview": {
+          "default": true,
+          "title": "Diff Preview",
+          "type": "boolean"
+        },
+        "tool_timeout_s": {
+          "default": 60.0,
+          "exclusiveMinimum": 0,
+          "title": "Tool Timeout S",
+          "type": "number"
+        },
+        "shell_timeout_s": {
+          "default": 120.0,
+          "exclusiveMinimum": 0,
+          "title": "Shell Timeout S",
+          "type": "number"
+        },
+        "max_output_bytes": {
+          "default": 200000,
+          "description": "Output above this is truncated; the full log is kept on disk.",
+          "minimum": 1024,
+          "title": "Max Output Bytes",
+          "type": "integer"
+        },
+        "max_read_bytes": {
+          "default": 5000000,
+          "minimum": 1024,
+          "title": "Max Read Bytes",
+          "type": "integer"
+        },
+        "max_scan_depth": {
+          "default": 25,
+          "minimum": 1,
+          "title": "Max Scan Depth",
+          "type": "integer"
+        },
+        "max_scan_entries": {
+          "default": 50000,
+          "minimum": 1,
+          "title": "Max Scan Entries",
+          "type": "integer"
+        },
+        "follow_symlinks": {
+          "default": false,
+          "description": "Off by default: prevents junction escapes from workspaces.",
+          "title": "Follow Symlinks",
+          "type": "boolean"
+        },
+        "warn_on_sensitive_paths": {
+          "default": true,
+          "title": "Warn On Sensitive Paths",
+          "type": "boolean"
+        },
+        "detect_prompt_injection": {
+          "default": true,
+          "title": "Detect Prompt Injection",
+          "type": "boolean"
+        },
+        "max_concurrent_reads": {
+          "default": 4,
+          "description": "Lower to 1 for old mechanical drives.",
+          "minimum": 1,
+          "title": "Max Concurrent Reads",
+          "type": "integer"
+        }
+      },
+      "title": "SafetyConfig",
+      "type": "object"
+    },
+    "UIConfig": {
+      "additionalProperties": false,
+      "description": "Presentation only. No behaviour may depend on these values.",
+      "properties": {
+        "theme": {
+          "default": "dark",
+          "enum": [
+            "dark",
+            "light",
+            "high-contrast"
+          ],
+          "title": "Theme",
+          "type": "string"
+        },
+        "show_thinking": {
+          "default": true,
+          "title": "Show Thinking",
+          "type": "boolean"
+        },
+        "show_token_meter": {
+          "default": true,
+          "title": "Show Token Meter",
+          "type": "boolean"
+        },
+        "stream_tool_output": {
+          "default": true,
+          "title": "Stream Tool Output",
+          "type": "boolean"
+        },
+        "timestamps": {
+          "default": false,
+          "title": "Timestamps",
+          "type": "boolean"
+        },
+        "keybindings": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Keybindings",
+          "type": "object"
+        }
+      },
+      "title": "UIConfig",
+      "type": "object"
+    },
+    "UsageConfig": {
+      "additionalProperties": false,
+      "description": "Usage accounting, including the explicitly-labelled energy estimate.",
+      "properties": {
+        "track": {
+          "default": true,
+          "title": "Track",
+          "type": "boolean"
+        },
+        "estimate_energy": {
+          "default": false,
+          "description": "Rough Wh estimate. Always labelled an estimate in every view.",
+          "title": "Estimate Energy",
+          "type": "boolean"
+        },
+        "assumed_watts": {
+          "default": 250.0,
+          "description": "Whole-system draw assumed while generating. User-calibrated.",
+          "exclusiveMinimum": 0,
+          "title": "Assumed Watts",
+          "type": "number"
+        }
+      },
+      "title": "UsageConfig",
+      "type": "object"
+    },
+    "WorkspaceConfig": {
+      "additionalProperties": false,
+      "description": "A directory the user has explicitly designated as trusted.",
+      "properties": {
+        "path": {
+          "format": "path",
+          "title": "Path",
+          "type": "string"
+        },
+        "name": {
+          "default": "",
+          "title": "Name",
+          "type": "string"
+        },
+        "allow_write": {
+          "default": true,
+          "title": "Allow Write",
+          "type": "boolean"
+        },
+        "allow_execute": {
+          "default": false,
+          "title": "Allow Execute",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "title": "WorkspaceConfig",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Schema version 1. Generated from localai.config.models.Config -- do not hand-edit; run `python tasks.py schemas`.",
+  "properties": {
+    "schema_version": {
+      "default": "1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "default_model": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Default Model"
+    },
+    "default_profile": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Default Profile"
+    },
+    "system_prompt": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "System Prompt"
+    },
+    "ollama": {
+      "$ref": "#/$defs/OllamaConfig"
+    },
+    "permissions": {
+      "$ref": "#/$defs/PermissionsConfig"
+    },
+    "safety": {
+      "$ref": "#/$defs/SafetyConfig"
+    },
+    "agent": {
+      "$ref": "#/$defs/AgentConfig"
+    },
+    "ui": {
+      "$ref": "#/$defs/UIConfig"
+    },
+    "privacy": {
+      "$ref": "#/$defs/PrivacyConfig"
+    },
+    "usage": {
+      "$ref": "#/$defs/UsageConfig"
+    },
+    "profiles": {
+      "additionalProperties": {
+        "$ref": "#/$defs/ModelProfile"
+      },
+      "title": "Profiles",
+      "type": "object"
+    }
+  },
+  "title": "localai configuration",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://localai.local/schemas/config.schema.json"
+}

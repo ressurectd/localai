@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://localai.local/schemas/plugin-manifest.schema.json",
+  "title": "localai plugin manifest",
+  "description": "Schema version 1. A plugin declares its tools here; localai never scans for tools implicitly. See docs/tool-api.md#plugins.",
+  "type": "object",
+  "required": [
+    "manifest_version",
+    "name",
+    "version",
+    "entry_point",
+    "tools"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "manifest_version": {
+      "type": "string",
+      "const": "1"
+    },
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "version": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "author": {
+      "type": "string"
+    },
+    "entry_point": {
+      "type": "string",
+      "description": "module:function returning list[Tool], e.g. 'my_plugin:build_tools'."
+    },
+    "tools": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "risk",
+          "mutating"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$"
+          },
+          "risk": {
+            "type": "string",
+            "enum": [
+              "read",
+              "write",
+              "destructive",
+              "execute",
+              "privileged"
+            ]
+          },
+          "mutating": {
+            "type": "boolean"
+          },
+          "network": {
+            "type": "boolean"
+          }
+        }
+      },
+      "description": "Declared up front so a user can review capabilities before loading."
+    },
+    "requires_localai": {
+      "type": "string",
+      "description": "Compatible localai version range."
+    }
+  }
+}

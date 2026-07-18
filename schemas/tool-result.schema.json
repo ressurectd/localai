@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://localai.local/schemas/tool-result.schema.json",
+  "title": "localai tool result",
+  "description": "Schema version 1. Returned by `localai test-tool --json`.",
+  "type": "object",
+  "required": [
+    "ok",
+    "content"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "content": {
+      "type": "string",
+      "description": "Text placed in the model's context."
+    },
+    "error": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "truncated": {
+      "type": "boolean"
+    },
+    "full_output_path": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Where untruncated output was spilled, when truncation occurred."
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Structured detail for the UI; not sent to the model."
+    },
+    "flags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Advisory markers such as 'truncated', 'dry_run', 'injection:<signal>'."
+    },
+    "untrusted": {
+      "type": "boolean"
+    }
+  }
+}
