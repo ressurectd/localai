@@ -1,0 +1,12 @@
+# Minimal localai configuration.
+#
+# Everything here has a sensible default; this file only shows the settings most
+# people actually change. Validate with:  localai config validate
+# Full schema:                            localai config schema
+
+default_model = "qwen3:8b"
+system_prompt = "You are a careful assistant working on a Windows machine. Read before you write, and say what you are unsure about."
+
+[permissions]
+# manual | auto | workspace | bypass   (see docs/permissions-engine.md)
+mode = "auto"

@@ -1,0 +1,131 @@
+/* ai — terminal stylesheet.
+ *
+ * Colour carries meaning consistently:
+ *   model accent  the model speaking (shifts per model family — see ui/art.py)
+ *   green         allowed / succeeded
+ *   yellow        awaiting you
+ *   red           denied / failed / destructive
+ *   dim           reasoning, metadata, things that are not the answer
+ *
+ * The rule that matters: model *suggestions* and executed *actions* never share a
+ * visual treatment. A tool request is indented and prefixed; its result carries an
+ * explicit status glyph. See docs/security-model.md#visual-separation.
+ *
+ * Base colours come from the active Textual theme, so everything below uses $vars
+ * rather than literals and re-themes for free.
+ */
+
+Screen { layout: vertical; background: $surface; }
+
+/* ---- bars ---- */
+
+#topbar {
+    dock: top;
+    height: 1;
+    background: $panel;
+    padding: 0 1;
+}
+
+#statusbar {
+    dock: bottom;
+    height: 1;
+    background: $panel;
+    color: $text-muted;
+    padding: 0 1;
+}
+
+.mode-manual    { color: $success; text-style: bold; }
+.mode-auto      { color: $warning; text-style: bold; }
+.mode-workspace { color: $accent;  text-style: bold; }
+.mode-bypass    { color: $error;   text-style: bold reverse; }
+
+.meter-ok   { color: $success; }
+.meter-warn { color: $warning; }
+.meter-full { color: $error; text-style: bold; }
+
+/* ---- conversation ---- */
+
+#conversation {
+    height: 1fr;
+    padding: 0 2;
+    scrollbar-size-vertical: 1;
+    scrollbar-color: $panel;
+    scrollbar-color-hover: $accent;
+    background: $surface;
+}
+
+.msg-user      { color: $text; text-style: bold; margin: 1 0 0 0; }
+.msg-assistant { color: $text; margin: 0 0 1 0; }
+.msg-thinking  { color: $text-disabled; text-style: italic; margin: 0 0 1 2; }
+.msg-system    { color: $accent; margin: 0; }
+.msg-error     { color: $error; text-style: bold; }
+.msg-notice    { color: $warning; }
+.detail        { color: $text-muted; }
+
+.sigil { margin: 1 0 0 2; }
+
+/* Tool activity is indented and glyph-marked so it can never be mistaken for
+ * something the model merely said. */
+.tool-request     { color: $secondary; margin: 0 0 0 2; }
+.tool-ok          { color: $success;   margin: 0 0 0 2; }
+.tool-failed      { color: $error;     margin: 0 0 0 2; }
+.tool-denied      { color: $error; text-style: bold; margin: 0 0 0 2; }
+.injection-warning{ color: $error; text-style: bold; margin: 0 0 0 2; }
+
+/* ---- input ---- */
+
+#input-area {
+    dock: bottom;
+    height: auto;
+    max-height: 12;
+    border: round $accent;   /* recoloured per model at runtime */
+    background: $surface;
+    margin: 0 1 0 1;
+}
+
+#prompt {
+    height: auto;
+    min-height: 2;
+    max-height: 10;
+    border: none;
+    background: $surface;
+    padding: 0 1;
+}
+
+#thinking   { dock: bottom; }
+CommandMenu { dock: bottom; }
+
+/* ---- modals ---- */
+
+ModalScreen { align: center middle; background: $background 60%; }
+
+#dialog {
+    width: 88;
+    max-width: 96%;
+    height: auto;
+    max-height: 84%;
+    border: round $accent;
+    background: $surface;
+    padding: 1 2;
+}
+
+#dialog.danger { border: thick $error; }
+
+#dialog-title  { text-style: bold; width: 100%; margin-bottom: 1; }
+#dialog-body   { height: auto; max-height: 26; margin-bottom: 1; }
+#dialog-buttons{ height: auto; align-horizontal: right; }
+
+Button { margin: 0 1; min-width: 14; }
+
+OptionList {
+    height: auto;
+    max-height: 22;
+    border: none;
+    background: $surface;
+}
+OptionList > .option-list--option-highlighted {
+    background: $accent 25%;
+    text-style: bold;
+}
+
+.danger-text { color: $error; text-style: bold; }

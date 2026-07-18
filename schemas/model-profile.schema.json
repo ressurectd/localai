@@ -1,0 +1,203 @@
+{
+  "$defs": {
+    "GenerationOptions": {
+      "additionalProperties": false,
+      "description": "Ollama generation parameters. ``None`` means \"let Ollama use its default\".",
+      "properties": {
+        "temperature": {
+          "anyOf": [
+            {
+              "maximum": 2.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": 0.7,
+          "title": "Temperature"
+        },
+        "top_p": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Top P"
+        },
+        "top_k": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Top K"
+        },
+        "min_p": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Min P"
+        },
+        "repeat_penalty": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Repeat Penalty"
+        },
+        "seed": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Set for reproducible sampling.",
+          "title": "Seed"
+        },
+        "num_ctx": {
+          "anyOf": [
+            {
+              "minimum": 256,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Context window in tokens. Defaults to the model's own.",
+          "title": "Num Ctx"
+        },
+        "num_predict": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "-1 for unlimited.",
+          "title": "Num Predict"
+        },
+        "stop": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Stop",
+          "type": "array"
+        }
+      },
+      "title": "GenerationOptions",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "A named, reusable bundle of model + prompt + generation settings.",
+  "properties": {
+    "name": {
+      "pattern": "^[A-Za-z0-9._-]{1,64}$",
+      "title": "Name",
+      "type": "string"
+    },
+    "model": {
+      "description": "Ollama model tag, e.g. 'qwen3:8b'.",
+      "title": "Model",
+      "type": "string"
+    },
+    "description": {
+      "default": "",
+      "title": "Description",
+      "type": "string"
+    },
+    "system_prompt": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "System Prompt"
+    },
+    "think": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Enable reasoning on models that support it. None = model default.",
+      "title": "Think"
+    },
+    "keep_alive": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Ollama keep_alive, e.g. '30m' or '-1' to pin in memory.",
+      "title": "Keep Alive"
+    },
+    "options": {
+      "$ref": "#/$defs/GenerationOptions"
+    }
+  },
+  "required": [
+    "name",
+    "model"
+  ],
+  "title": "ModelProfile",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://localai.local/schemas/model-profile.schema.json"
+}

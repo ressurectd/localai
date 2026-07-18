@@ -1,0 +1,26 @@
+# Read-only investigation configuration.
+#
+# For safely reviewing an old drive or a large folder. Nothing can be modified: the
+# mutating tools are not even registered, so there is no path by which a write could
+# occur.
+
+default_model = "qwen3:8b"
+
+[permissions]
+mode = "auto"
+
+[[permissions.workspaces]]
+path = "E:/OldDrive"
+name = "recovered drive"
+allow_write = false
+allow_execute = false
+
+[safety]
+read_only = true           # denies every non-read tool outright
+max_concurrent_reads = 1   # kind to old mechanical drives
+tool_timeout_s = 300       # slow drives need patience
+max_scan_entries = 200000
+max_scan_depth = 30
+
+[privacy]
+network_disabled = true    # nothing leaves the machine while investigating

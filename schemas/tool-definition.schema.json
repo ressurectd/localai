@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://localai.local/schemas/tool-definition.schema.json",
+  "title": "localai tool definition",
+  "description": "Schema version 1. Emitted by `localai tools list --json`.",
+  "type": "object",
+  "required": [
+    "name",
+    "description",
+    "risk",
+    "mutating",
+    "parameters"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "description": "Stable identifier exposed to the model."
+    },
+    "description": {
+      "type": "string",
+      "minLength": 10,
+      "description": "Written for the model: what it does, when to use it."
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "filesystem",
+        "shell",
+        "system",
+        "general"
+      ]
+    },
+    "risk": {
+      "type": "string",
+      "enum": [
+        "read",
+        "write",
+        "destructive",
+        "execute",
+        "privileged"
+      ],
+      "description": "Severity, ordered. Drives the permission decision."
+    },
+    "mutating": {
+      "type": "boolean",
+      "description": "True if it changes state on disk."
+    },
+    "network": {
+      "type": "boolean",
+      "description": "True if it makes a network request."
+    },
+    "returns_untrusted_content": {
+      "type": "boolean",
+      "description": "True if output is file/command content the model must treat as data."
+    },
+    "parameters": {
+      "type": "object",
+      "description": "JSON Schema for the arguments object.",
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "const": "object"
+        }
+      }
+    }
+  }
+}

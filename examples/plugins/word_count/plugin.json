@@ -1,0 +1,18 @@
+{
+  "$schema": "../../../schemas/plugin-manifest.schema.json",
+  "manifest_version": "1",
+  "name": "word_count",
+  "version": "1.0.0",
+  "description": "Example plugin. Adds a tool that counts words and characters in a text file.",
+  "author": "localai contributors",
+  "entry_point": "word_count:build_tools",
+  "requires_localai": ">=0.1.0",
+  "tools": [
+    {
+      "name": "word_count",
+      "risk": "read",
+      "mutating": false,
+      "network": false
+    }
+  ]
+}

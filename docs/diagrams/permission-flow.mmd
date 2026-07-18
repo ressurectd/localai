@@ -1,0 +1,52 @@
+%% Permission evaluation order.
+%% Stages 1-3 are unconditional: no rule, mode or grant overrides them.
+%% Source of truth: src/localai/permissions/engine.py::PermissionEngine.evaluate
+%% Prose: docs/permissions-engine.md
+
+flowchart TD
+    REQ["PermissionRequest<br/>tool, risk, paths, command, caller"]
+
+    S1{"1. Protected<br/>application path?"}
+    S2{"2. Kill switch<br/>engaged?"}
+    S3{"3. Read-only mode<br/>and mutating?"}
+    S4{"4. Network tool with<br/>network disabled?"}
+    S5{"5. Matching<br/>deny rule?"}
+    S6{"6. High-risk<br/>rate limit hit?"}
+    S7{"7. Path containment<br/>junction / traversal / device name"}
+    S8{"8. Sensitive path?<br/>credentials, browser, keys"}
+    S9{"9. Allow rule or<br/>session grant?"}
+    S10{"10. Permission<br/>mode default"}
+
+    DENY_HARD["DENY<br/>overridable = false<br/>UI must not prompt"]
+    DENY["DENY"]
+    CONFIRM["CONFIRM<br/>ask the user"]
+    ALLOW["ALLOW<br/>execute"]
+
+    REQ --> S1
+    S1 -->|yes| DENY_HARD
+    S1 -->|no| S2
+    S2 -->|yes| DENY_HARD
+    S2 -->|no| S3
+    S3 -->|yes| DENY_HARD
+    S3 -->|no| S4
+    S4 -->|yes| DENY
+    S4 -->|no| S5
+    S5 -->|yes| DENY
+    S5 -->|no| S6
+    S6 -->|yes| DENY
+    S6 -->|no| S7
+    S7 -->|escaped| DENY
+    S7 -->|contained| S8
+    S8 -->|"yes, no allow_sensitive rule"| CONFIRM
+    S8 -->|no| S9
+    S9 -->|yes| ALLOW
+    S9 -->|no| S10
+    S10 -->|"bypass, or auto+read,<br/>or inside trusted workspace"| ALLOW
+    S10 -->|"anything else<br/>(fails closed)"| CONFIRM
+
+    classDef hard fill:#5a1f1f,stroke:#c74440,color:#fff
+    classDef warn fill:#5a4a1f,stroke:#c7a044,color:#fff
+    classDef ok fill:#1f5a2f,stroke:#44c76a,color:#fff
+    class DENY_HARD,DENY hard
+    class CONFIRM warn
+    class ALLOW ok

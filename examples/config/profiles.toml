@@ -1,0 +1,33 @@
+# Model profiles: reusable bundles of model + prompt + generation settings.
+#
+# Apply one with:  /profile careful
+
+default_model = "qwen3:8b"
+default_profile = "careful"
+
+[profiles.careful]
+model = "qwen3:8b"
+description = "Slow and precise. Reasoning on, low temperature, fixed seed."
+system_prompt = "Think carefully before acting. Read files before modifying them. State your uncertainty explicitly."
+think = true
+keep_alive = "30m"
+
+[profiles.careful.options]
+temperature = 0.3
+top_p = 0.9
+seed = 42
+num_ctx = 32768
+
+[profiles.fast]
+model = "qwen2.5:7b"
+description = "Quick answers, no reasoning step."
+think = false
+
+[profiles.fast.options]
+temperature = 0.7
+num_predict = 512
+
+[profiles.pinned]
+model = "qwen3:8b"
+description = "Kept resident in memory so there is no load delay."
+keep_alive = "-1"          # -1 pins the model indefinitely

@@ -1,0 +1,116 @@
+{
+  "$defs": {
+    "RiskLevel": {
+      "description": "Risk classification assigned to each tool, ordered by severity.\n\nAll four comparison operators are defined explicitly and compare :attr:`rank`.\nThis is not optional decoration: ``StrEnum`` inherits ``str``'s comparisons, so\nomitting any one of them silently falls back to *alphabetical* ordering --\n``\"read\" >= \"execute\"`` is True because 'r' sorts after 'e'. That would make\n``risk >= RiskLevel.EXECUTE`` accept a read, and every severity gate in the\npermissions engine would compare spelling instead of severity.",
+      "enum": [
+        "read",
+        "write",
+        "destructive",
+        "execute",
+        "privileged"
+      ],
+      "title": "RiskLevel",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Schema version 1. A single permission rule. Evaluation order is documented in docs/permissions-engine.md.",
+  "properties": {
+    "id": {
+      "pattern": "^[A-Za-z0-9._:-]{1,64}$",
+      "title": "Id",
+      "type": "string"
+    },
+    "effect": {
+      "enum": [
+        "allow",
+        "deny",
+        "confirm"
+      ],
+      "title": "Effect",
+      "type": "string"
+    },
+    "note": {
+      "default": "",
+      "title": "Note",
+      "type": "string"
+    },
+    "tools": {
+      "description": "Tool names or fnmatch globs. Empty = any tool.",
+      "items": {
+        "type": "string"
+      },
+      "title": "Tools",
+      "type": "array"
+    },
+    "paths": {
+      "description": "Path globs. Empty = any path.",
+      "items": {
+        "type": "string"
+      },
+      "title": "Paths",
+      "type": "array"
+    },
+    "command_patterns": {
+      "description": "fnmatch globs matched against the full command line.",
+      "items": {
+        "type": "string"
+      },
+      "title": "Command Patterns",
+      "type": "array"
+    },
+    "max_risk": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RiskLevel"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Rule applies only at or below this risk level."
+    },
+    "interfaces": {
+      "description": "Empty = every interface.",
+      "items": {
+        "enum": [
+          "tui",
+          "cli",
+          "api",
+          "mcp"
+        ],
+        "type": "string"
+      },
+      "title": "Interfaces",
+      "type": "array"
+    },
+    "allow_sensitive": {
+      "default": false,
+      "description": "Required for an allow rule to cover credential-bearing paths.",
+      "title": "Allow Sensitive",
+      "type": "boolean"
+    },
+    "expires_at": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Unix timestamp; None = never.",
+      "title": "Expires At"
+    }
+  },
+  "required": [
+    "id",
+    "effect"
+  ],
+  "title": "PermissionRuleModel",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://localai.local/schemas/permission-rule.schema.json"
+}

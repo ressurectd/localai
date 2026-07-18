@@ -1,0 +1,316 @@
+{
+  "$comment": "Machine-readable project status. Updated as part of significant implementation work. NOT a substitute for running the tests or reading the source - see HANDOFF.md and AGENTS.md.",
+  "schema": "localai.project-status/1",
+  "updated_at": "2026-07-18",
+  "phase": {
+    "current": 1,
+    "name": "Functional first version",
+    "status": "complete",
+    "next": 3,
+    "next_name": "Document extraction, indexing, investigation mode, memory"
+  },
+  "schema_versions": {
+    "app": "0.1.0",
+    "cli_schema": "1",
+    "config_schema": "1",
+    "tool_api": "1",
+    "permission_schema": "1",
+    "plugin_manifest": "1",
+    "local_api": "v1"
+  },
+  "database": {
+    "migration_version": 2,
+    "migrations": [
+      "001_initial",
+      "002_message_search"
+    ],
+    "fts5_required": true,
+    "fts5_optional_fallback": "LIKE substring search"
+  },
+  "tests": {
+    "last_run": "2026-07-18",
+    "result": "pass",
+    "total": 389,
+    "security_marked": 136,
+    "unit_files": 7,
+    "integration_files": 3,
+    "command": "python tasks.py test"
+  },
+  "quality_gates": {
+    "ruff_check": "clean",
+    "ruff_format": "clean",
+    "mypy": "clean (52 source files, strict on security-sensitive modules)",
+    "validate_docs": "clean",
+    "command": "python tasks.py check"
+  },
+  "implemented": [
+    "ollama_model_detection",
+    "ollama_provider_discovery",
+    "model_switching_without_restart",
+    "model_capability_reporting",
+    "model_preload_unload_keepalive",
+    "streaming_chat",
+    "thinking_mode",
+    "generation_options",
+    "model_profiles",
+    "textual_tui",
+    "slash_commands",
+    "keyboard_shortcuts",
+    "context_token_meter",
+    "tool_activity_display",
+    "conversation_storage",
+    "conversation_fork",
+    "conversation_export_markdown_json",
+    "conversation_fulltext_search",
+    "usage_tracking_with_provenance",
+    "usage_reporting_eight_periods",
+    "filesystem_read_tools",
+    "filesystem_write_tools",
+    "recycle_bin_deletion",
+    "automatic_backups",
+    "diff_preview",
+    "powershell_execution",
+    "python_execution",
+    "system_inspection_tools",
+    "git_readonly_tool",
+    "permissions_engine",
+    "four_permission_modes",
+    "permission_rules",
+    "session_grants",
+    "global_kill_switch",
+    "high_risk_rate_limiting",
+    "audit_logging",
+    "path_containment",
+    "junction_escape_detection",
+    "sensitive_path_classification",
+    "prompt_injection_detection",
+    "untrusted_content_fencing",
+    "dry_run_mode",
+    "read_only_mode",
+    "cancellation",
+    "agent_loop_guard_rails",
+    "structured_tool_fallback",
+    "configuration_management",
+    "environment_overrides",
+    "non_interactive_cli",
+    "json_output_contracts",
+    "ndjson_streaming",
+    "doctor_diagnostics",
+    "capabilities_introspection",
+    "permissions_explain",
+    "powershell_installer",
+    "uninstaller",
+    "task_runner",
+    "json_schemas",
+    "mock_provider",
+    "dev_sandbox",
+    "slash_command_menu",
+    "thinking_indicator",
+    "model_identity_art",
+    "colour_themes",
+    "permission_mode_picker",
+    "model_picker"
+  ],
+  "partial": [
+    {
+      "feature": "context_compaction",
+      "state": "Deterministic truncation only",
+      "missing": "Model-assisted summarisation. Deliberately deferred: a mechanical drop is predictable, a generated summary can invent things the user did not say.",
+      "location": "src/localai/ui/app.py::_compact_context"
+    },
+    {
+      "feature": "list_processes",
+      "state": "Windows only",
+      "missing": "POSIX implementation",
+      "location": "src/localai/tools/system.py"
+    },
+    {
+      "feature": "recycle_bin_deletion",
+      "state": "Windows only",
+      "missing": "Freedesktop trash spec for Linux. Falls back to an explicit permanent-delete confirmation elsewhere.",
+      "location": "src/localai/safety/recycle.py"
+    },
+    {
+      "feature": "credential_storage",
+      "state": "Designed, unused",
+      "missing": "Nothing stores a secret yet. Becomes real with the local API auth token.",
+      "location": "docs/security-model.md#secrets"
+    }
+  ],
+  "planned": [
+    {
+      "feature": "document_extraction",
+      "phase": 3,
+      "notes": "Extractor Protocol designed in docs/architecture.md. Optional deps already declared under [extract]; doctor already reports which are missing."
+    },
+    {
+      "feature": "semantic_index_rag",
+      "phase": 3,
+      "notes": "Embeddings optional, local models preferred, indexes stored locally."
+    },
+    {
+      "feature": "investigation_mode",
+      "phase": 3,
+      "notes": "Read-only registry already exists via register_builtins(include_mutating=False)."
+    },
+    {
+      "feature": "persistent_memory",
+      "phase": 3,
+      "notes": "memories table exists and is intentionally empty. Must be opt-in, inspectable, deletable. Never hidden."
+    },
+    {
+      "feature": "modelfile_management",
+      "phase": 3
+    },
+    {
+      "feature": "local_http_api",
+      "phase": 4,
+      "notes": "MUST reuse PermissionEngine. No second permission path."
+    },
+    {
+      "feature": "mcp_server",
+      "phase": 4,
+      "notes": "stdio first. Interface.MCP and Caller.client_id already flow through the engine and audit log."
+    },
+    {
+      "feature": "python_client_library",
+      "phase": 4
+    },
+    {
+      "feature": "lora_qlora_training",
+      "phase": 5,
+      "notes": "Optional module. Detect hardware, estimate memory, require confirmation, log config, support resume."
+    }
+  ],
+  "known_bugs": [],
+  "fixed_during_phase_1": [
+    {
+      "id": "push-screen-wait-outside-worker",
+      "severity": "critical",
+      "summary": "push_screen_wait requires a Textual worker context. It was called from ordinary async methods, so /models crashed with NoActiveWorker and -- far worse -- the permission confirmation dialog crashed, meaning every tool call in Manual mode failed with a traceback instead of asking the user.",
+      "fix": "Decorated _run_turn, action_select_model, action_select_mode, action_select_theme and _confirm_bypass with @work.",
+      "regression_test": "tests/integration/test_ui_flows.py::test_confirmation_dialog_appears_in_manual_mode",
+      "why_it_was_missed": "Runner tests stubbed the confirm callback; TUI tests never triggered one."
+    },
+    {
+      "id": "textarea-changed-message-shadowing",
+      "severity": "high",
+      "summary": "PromptArea defined a nested Changed message, shadowing TextArea.Changed. TextArea posts its own as self.Changed(self), so it was constructed through our __init__ and arrived carrying the widget instead of the text.",
+      "fix": "Renamed to PromptArea.TextEdited.",
+      "regression_test": "tests/integration/test_ui_flows.py::test_menu_filters_as_you_type"
+    },
+    {
+      "id": "chrome-query-on-modal-screen",
+      "severity": "high",
+      "summary": "App.query_one searches the *active* screen. Refreshing the top bar while a modal was open raised NoMatches and killed the turn worker mid-confirmation.",
+      "fix": "Bar widgets cached at mount and accessed through properties."
+    },
+    {
+      "id": "thinking-elapsed-read-from-reactive",
+      "severity": "low",
+      "summary": "ThinkingIndicator.stop() returned the reactive  attribute, which only advances when the interval timer fires, so a turn finishing between ticks reported zero seconds.",
+      "fix": "stop() computes the duration from the start time directly.",
+      "regression_test": "tests/integration/test_ui_flows.py::test_thinking_duration_is_measured_without_a_timer"
+    },
+    {
+      "id": "risk-level-alphabetical-comparison",
+      "severity": "high",
+      "summary": "RiskLevel subclasses StrEnum and only defined __lt__/__le__, so >= fell back to alphabetical string comparison. 'read' >= 'execute' was True, making the kill switch block ordinary reads and workspace mode demand allow_execute for a plain write.",
+      "fix": "All four comparison operators defined explicitly against rank.",
+      "regression_test": "tests/unit/test_risk_ordering.py"
+    },
+    {
+      "id": "windows-dirent-inode-zero",
+      "severity": "high",
+      "summary": "DirEntry.stat() on Windows returns cached FindFirstFile data with st_ino and st_dev both 0. The (dev, ino) cycle-detection key matched every directory, so recursive walks silently descended only one level.",
+      "fix": "Cycle detection keyed on resolved paths, and only applied when following links.",
+      "regression_test": "tests/unit/test_tools.py::test_find_files_searches_recursively"
+    },
+    {
+      "id": "executescript-implicit-commit",
+      "severity": "high",
+      "summary": "sqlite3.executescript commits any open transaction before running, so the migration runner's outer BEGIN/COMMIT had nothing to commit and every migration failed.",
+      "fix": "Transaction control moved inside the script, which also handles semicolons in CREATE TRIGGER bodies.",
+      "regression_test": "tests/unit/test_storage_and_config.py::test_failed_migration_leaves_the_database_unchanged"
+    },
+    {
+      "id": "textarea-consumes-enter",
+      "severity": "medium",
+      "summary": "Textual's TextArea handles keys in its own _on_key and consumes Enter, so the App-level handler was dead code and Enter inserted a newline instead of sending.",
+      "fix": "PromptArea subclass intercepts in _on_key and posts a Submitted message.",
+      "regression_test": "tests/integration/test_end_to_end.py::test_tui_sends_a_message_and_renders_the_reply"
+    },
+    {
+      "id": "chatml-injection-markers-missed",
+      "severity": "medium",
+      "summary": "The role-impersonation pattern did not allow the pipe delimiter, so <|system|> and <|im_start|> - the most common template-injection form for local models - were not detected.",
+      "fix": "Pattern extended to allow [|/] after '<'.",
+      "regression_test": "tests/unit/test_safety.py::test_injection_patterns_are_detected"
+    },
+    {
+      "id": "tool-suggestion-lost",
+      "severity": "low",
+      "summary": "The 'did you mean read_file?' suggestion lived in ToolNotFoundError.remediation, which the runner discarded when building the failure message, so the model never saw it and could not self-correct.",
+      "fix": "Runner folds remediation into the message returned to the model."
+    },
+    {
+      "id": "conversationstore-list-shadowing",
+      "severity": "low",
+      "summary": "A method named list() shadowed the builtin inside its own class body, breaking every '-> list[...]' annotation after it.",
+      "fix": "Renamed to recent()."
+    }
+  ],
+  "security": {
+    "boundary_tests_passing": true,
+    "concerns": [
+      {
+        "area": "prompt_injection",
+        "status": "mitigated, not solved",
+        "notes": "Detection is heuristic and documented as such. The guarantee is the permissions engine: a successful injection still cannot make a consequential change without confirmation. Content fencing is unconditional and cannot be disabled."
+      },
+      {
+        "area": "bypass_mode",
+        "status": "accepted risk",
+        "notes": "Requires a typed confirmation phrase and is unreachable by keystroke. Still logs, displays and audits everything, and protected paths remain unwritable."
+      },
+      {
+        "area": "data_at_rest",
+        "status": "unencrypted",
+        "notes": "Conversations and audit logs are plain SQLite/JSONL protected only by filesystem permissions. Documented in docs/security-model.md."
+      },
+      {
+        "area": "follow_symlinks",
+        "status": "off by default",
+        "notes": "Enabling it permits junction traversal out of a workspace. doctor flags it as a warning."
+      }
+    ],
+    "sensitive_modules": [
+      "src/localai/permissions/engine.py",
+      "src/localai/permissions/audit.py",
+      "src/localai/safety/pathsafe.py",
+      "src/localai/safety/sensitive.py",
+      "src/localai/safety/injection.py",
+      "src/localai/safety/recycle.py",
+      "src/localai/tools/runner.py",
+      "src/localai/tools/shell.py",
+      "src/localai/tools/fs_write.py",
+      "src/localai/config/paths.py"
+    ]
+  },
+  "verified_environment": {
+    "os": "Windows 11 build 26200",
+    "python": "3.14.3",
+    "python_floor": "3.11",
+    "ollama": "0.32.0",
+    "git": "2.53.0",
+    "powershell": "5.1",
+    "models_present": [
+      "qwen3.6:27b",
+      "qwen3:8b",
+      "qwen2.5:7b",
+      "entity12208/editorai:v3-7b",
+      "gemma3:12b"
+    ],
+    "end_to_end_verified": "Real tool-calling turn against the auto-selected model (qwen3.6:27b): tool requested, permission evaluated, executed, result returned, model answered. Exact token counts reported by Ollama. Also verified on qwen3:8b at ~43 tok/s."
+  }
+}

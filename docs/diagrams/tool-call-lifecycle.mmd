@@ -1,0 +1,59 @@
+%% The lifecycle of one tool call, from model request to result.
+%% Source of truth: src/localai/tools/runner.py::ToolRunner.execute
+%%
+%% Steps 3, 4 and 8 cannot be skipped by a caller. There is no parameter that
+%% disables them; adding one would be a security-relevant change.
+
+sequenceDiagram
+    autonumber
+    participant M as Model
+    participant L as AgentLoop
+    participant R as ToolRunner
+    participant Reg as Registry
+    participant E as PermissionEngine
+    participant U as User
+    participant T as Tool
+    participant A as AuditLogger
+
+    M->>L: tool_calls: [read_file {path}]
+    L->>L: repetition + iteration guards
+    L->>R: execute(name, args, context)
+
+    R->>Reg: get(name) + validate_arguments
+    Reg-->>R: validated args, defaults applied
+
+    R->>T: affected_paths(args)
+    T-->>R: [Path, ...]
+    Note over R: the request is built from the tool's<br/>declared risk and paths
+
+    R->>E: evaluate(request)
+    E->>E: 11-stage order (see permission-flow.mmd)
+    E-->>R: Decision
+
+    R->>A: record_decision(pending)
+
+    alt DENY
+        R->>A: record_decision(denied)
+        R-->>L: failure("Permission denied: ...")
+    else CONFIRM
+        R->>U: confirm(tool, args, decision)
+        Note over U: sees the EXACT command or path,<br/>risk, reason, sensitive-data warnings
+        alt declined
+            R->>A: record_decision(cancelled)
+            R-->>L: failure("The user declined...")
+        else approved
+            U-->>R: once | session | tool | command
+            R->>A: record_decision(confirmed)
+            R->>T: run(args, context) under timeout
+        end
+    else ALLOW
+        R->>T: run(args, context) under timeout
+    end
+
+    T-->>R: ToolResult
+    R->>R: truncate (spill full output to disk)
+    R->>R: scan + fence untrusted content
+    R->>A: record_execution(outcome, duration, flags)
+    R-->>L: ToolResult
+    L->>M: tool message
+    Note over M: model continues, or gives a final answer
