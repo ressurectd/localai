@@ -313,6 +313,15 @@ def test_thinking_caption_waits_for_a_phrase_boundary() -> None:
     assert indicator.stop() >= 0
 
 
+def test_thinking_caption_handles_a_newline_boundary() -> None:
+    """A reasoning newline must not become an empty ``rsplit`` separator."""
+    indicator = ThinkingIndicator()
+    indicator.start()
+    indicator.feed("First I will inspect the request.\nThen I will answer.")
+    assert indicator.caption == "First I will inspect the request."
+    assert indicator.stop() >= 0
+
+
 def test_thinking_indicator_reports_elapsed_time() -> None:
     indicator = ThinkingIndicator()
     indicator.start()
