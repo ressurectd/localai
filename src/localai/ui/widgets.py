@@ -327,8 +327,10 @@ class ThinkingIndicator(Widget):
         text = "".join(self._buffer)
         for terminator in (". ", "? ", "! ", "\n"):
             if terminator in text[-120:]:
-                phrase = text.replace("\n", " ").strip()
-                phrase = phrase.rsplit(terminator.strip(), 1)[0]
+                # Split before normalising whitespace. Stripping the newline
+                # terminator produces an empty string, which ``rsplit`` rejects.
+                phrase = text.rsplit(terminator, 1)[0]
+                phrase = " ".join(phrase.split())
                 tail = phrase.split(". ")[-1].strip()
                 if len(tail) > 3:
                     self.caption = tail[:110]
