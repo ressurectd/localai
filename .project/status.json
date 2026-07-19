@@ -30,7 +30,7 @@
   "tests": {
     "last_run": "2026-07-18",
     "result": "pass",
-    "total": 389,
+    "total": 408,
     "security_marked": 136,
     "unit_files": 7,
     "integration_files": 3,
@@ -184,6 +184,13 @@
   ],
   "known_bugs": [],
   "fixed_during_phase_1": [
+    {
+      "id": "thinking-indicator-behind-input",
+      "severity": "high",
+      "summary": "The thinking indicator rendered underneath the input box: active, sized and repainting, but never visible. Three compounding causes -- independent dock:bottom stacking order, auto-height parents not recomputing when a child resizes, and a stale dock/layer rule in CommandMenu.DEFAULT_CSS.",
+      "fix": "All heights below the transcript assigned explicitly in LocalAIApp._relayout().",
+      "regression_test": "tests/integration/test_ui_flows.py::test_thinking_indicator_sits_above_the_input_not_behind_it"
+    },
     {
       "id": "push-screen-wait-outside-worker",
       "severity": "critical",

@@ -107,7 +107,7 @@ class PermissionRequest:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> PermissionRequest:
-        """Rebuild from JSON, for ``localai permissions explain --action request.json``."""
+        """Rebuild from JSON, for ``ai permissions explain --action request.json``."""
         caller_raw = data.get("caller") or {}
         return cls(
             tool=str(data["tool"]),
@@ -129,7 +129,7 @@ class PermissionRequest:
 class Decision:
     """The engine's verdict, with the full reasoning attached.
 
-    This object is what ``localai permissions explain`` prints, what the confirmation
+    This object is what ``ai permissions explain`` prints, what the confirmation
     prompt renders and what the audit log stores. One shape, three consumers -- so
     what the user is shown is exactly what was decided.
     """

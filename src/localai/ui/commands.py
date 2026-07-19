@@ -100,21 +100,50 @@ class CommandRegistry:
 
 
 def _help(app: LocalAIApp, args: list[str]) -> CommandResult:
+    """The full key and command reference.
+
+    This lives here rather than on screen at startup: a wall of shortcuts is noise
+    you stop reading after the first session, and it costs the space the conversation
+    should have. The status bar carries a single "/help" pointer instead.
+    """
     if args:
         command = COMMANDS.get(args[0])
         if command is None:
-            return CommandResult(f"unknown command /{args[0]}", "error")
-        usage = f"\nUsage: {command.usage}" if command.usage else ""
-        return CommandResult(f"/{command.name} - {command.summary}{usage}")
+            close = ", ".join("/" + c.name for c in COMMANDS.matching(args[0])[:3])
+            hint = f"  Did you mean: {close}?" if close else ""
+            return CommandResult(f"unknown command /{args[0]}.{hint}", "error")
+        usage = f"\n\n  usage:  {command.usage}" if command.usage else ""
+        return CommandResult(f"[b]/{command.name}[/b]  —  {command.summary}{usage}")
 
-    lines = ["Commands (Tab completes, Ctrl+P opens the palette):"]
-    lines += [f"  /{c.name:<12} {c.summary}" for c in COMMANDS.all()]
+    keys = [
+        ("Enter", "send"),
+        ("Shift+Enter", "new line"),
+        ("/", "command menu — type to filter, Tab completes"),
+        ("Esc", "cancel generation, or dismiss the menu"),
+        ("Ctrl+C ×2", "exit"),
+        ("Ctrl+Q", "emergency stop — cancels and locks all tools"),
+        ("Ctrl+P", "command menu"),
+        ("Ctrl+M", "model picker"),
+        ("Ctrl+O", "permission mode picker"),
+        ("Ctrl+T", "colour theme"),
+        ("Ctrl+G", "cycle permission mode"),
+        ("Ctrl+F", "search history"),
+        ("Ctrl+L", "clear the view"),
+        ("F1", "this help"),
+    ]
+    width = max(len(k) for k, _ in keys)
+    lines = ["[b]Keys[/b]", ""]
+    lines += [f"  [b]{key:<{width}}[/b]   [dim]{what}[/dim]" for key, what in keys]
+
+    commands = COMMANDS.all()
+    name_width = max(len(c.name) for c in commands) + 1
+    lines += ["", "[b]Commands[/b]", ""]
+    lines += [f"  [b]/{c.name:<{name_width}}[/b] [dim]{c.summary}[/dim]" for c in commands]
     lines += [
         "",
-        "Keys:  Enter send | Shift+Enter newline | Esc cancel | Ctrl+Q emergency stop",
-        "       Ctrl+P palette | Ctrl+M models | Ctrl+G cycle mode | Ctrl+F search | F1 help",
+        "[dim]/help <command> for detail on one.[/dim]",
     ]
-    return CommandResult("\n".join(lines))
+    return CommandResult("\n".join(lines), action="show_help_screen")
 
 
 def _models(app: LocalAIApp, args: list[str]) -> CommandResult:

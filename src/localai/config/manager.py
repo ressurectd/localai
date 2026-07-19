@@ -21,7 +21,7 @@ from localai.config.paths import AppPaths
 from localai.errors import ConfigError
 
 #: Environment variable -> dotted config path. This mapping *is* the documentation;
-#: `localai config schema --env` prints it, and docs/development.md links to it.
+#: `ai config schema --env` prints it, and docs/development.md links to it.
 ENV_OVERRIDES: Final[dict[str, str]] = {
     "LOCALAI_MODEL": "default_model",
     "LOCALAI_PROFILE": "default_profile",
@@ -74,7 +74,7 @@ def _assign(target: dict[str, Any], dotted: str, value: Any) -> None:
 def apply_env_overrides(raw: dict[str, Any], env: dict[str, str] | None = None) -> list[str]:
     """Apply :data:`ENV_OVERRIDES` in place; return the names of the vars that applied.
 
-    Returned names are surfaced by ``localai doctor`` so a user can see at a glance
+    Returned names are surfaced by ``ai doctor`` so a user can see at a glance
     why their configuration differs from the file on disk.
     """
     source = os.environ if env is None else env
@@ -140,7 +140,7 @@ class ConfigManager:
         except ValidationError as exc:
             raise ConfigError(
                 _format_validation_error(exc, str(self.paths.config_file)),
-                remediation="Run 'localai config schema' to see the expected structure.",
+                remediation="Run 'ai config schema' to see the expected structure.",
                 path=str(self.paths.config_file),
             ) from exc
         return self._config

@@ -91,7 +91,7 @@ _RISK_ORDER: dict[RiskLevel, int] = {
 class StrictModel(BaseModel):
     """Base config model: unknown keys are an error, not a silent no-op.
 
-    A typo in ``config.toml`` should fail loudly at ``localai config validate`` rather
+    A typo in ``config.toml`` should fail loudly at ``ai config validate`` rather
     than leaving the user to wonder why a setting had no effect.
     """
 

@@ -64,7 +64,7 @@ class ToolRegistry:
             raise ToolNotFoundError(
                 f"no tool named {name!r}",
                 remediation=(f"Did you mean {suggestion!r}? " if suggestion else "")
-                + "Run 'localai tools list' to see the available tools.",
+                + "Run 'ai tools list' to see the available tools.",
                 tool=name,
                 available=sorted(self._tools),
             ) from None

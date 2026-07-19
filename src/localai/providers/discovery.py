@@ -347,7 +347,7 @@ async def discover_ollama(config: OllamaConfig | None = None) -> DiscoveredProvi
             executable=executable,
             base_url=settings.base_url,
             model_dir=model_dir,
-            remediation="Run 'localai doctor' for a fuller diagnosis.",
+            remediation="Run 'ai doctor' for a fuller diagnosis.",
         )
     finally:
         if provider is not None:
@@ -400,7 +400,7 @@ def best_across(providers: Sequence[DiscoveredProvider]) -> DiscoveredModel | No
 
 
 def summarise(providers: Sequence[DiscoveredProvider]) -> dict[str, Any]:
-    """Build the document emitted by ``localai providers scan --json``."""
+    """Build the document emitted by ``ai providers scan --json``."""
     usable = [p for p in providers if p.usable]
     all_models = [m for p in providers for m in p.models]
     recommended = best_across(providers)

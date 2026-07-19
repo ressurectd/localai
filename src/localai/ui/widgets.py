@@ -154,6 +154,11 @@ class PromptArea(TextArea):
         self.post_message(self.TextEdited(self.text))
 
 
+#: Rows shown at once. Six is enough to choose from without covering the
+#: conversation; the rest are reachable by typing another character.
+VISIBLE_ROWS = 6
+
+
 @dataclass(frozen=True, slots=True)
 class MenuEntry:
     """One row in the command menu."""
@@ -171,23 +176,18 @@ class CommandMenu(Widget):
     it on Tab or Enter.
     """
 
-    DEFAULT_CSS = """
-    CommandMenu {
-        display: none;
-        height: auto;
-        max-height: 12;
-        dock: bottom;
-        layer: menu;
-        background: $panel;
-        border: round $accent;
-        padding: 0 1;
-        margin: 0 2;
-    }
-    CommandMenu.visible { display: block; }
-    """
+    # No DEFAULT_CSS: layout for this widget lives in ui/theme.tcss so it can be
+    # reasoned about alongside everything else. An earlier DEFAULT_CSS here set
+    # `dock: bottom; layer: menu`, which quietly removed the widget from its
+    # container's vertical flow and let it render on top of the prompt.
 
     entries: reactive[tuple[MenuEntry, ...]] = reactive(())
     index: reactive[int] = reactive(0)
+
+    #: Rows this widget currently needs. The app sums these to size the footer,
+    #: because an auto-height container does not recompute when a child's display
+    #: toggles -- the widget would simply overflow upward across the input box.
+    wanted_height: int = 0
 
     def __init__(self, *, unicode_ok: bool = True, **kwargs) -> None:
         super().__init__(**kwargs)
@@ -211,12 +211,13 @@ class CommandMenu(Widget):
         self.entries = tuple(entries)
         self.index = 0
         self.add_class("visible")
-        self.refresh()
+        self._resize()
 
     def hide(self) -> None:
         self.entries = ()
         self.remove_class("visible")
-        self.refresh()
+        self.wanted_height = 0
+        self.styles.height = 0
 
     def move(self, direction: str) -> None:
         """Move the selection, wrapping at both ends."""
@@ -224,7 +225,19 @@ class CommandMenu(Widget):
             return
         step = -1 if direction == "up" else 1
         self.index = (self.index + step) % len(self.entries)
-        self.refresh()
+        self._resize()
+
+    def _resize(self) -> None:
+        """Set an explicit height and relayout.
+
+        Toggling ``display`` alone does not invalidate an auto-height ancestor, so
+        the menu would overflow across the input box rather than pushing the
+        conversation up. An explicit height forces the parent to recompute.
+        """
+        rows = min(len(self.entries), VISIBLE_ROWS)
+        extra = 1 if len(self.entries) > VISIBLE_ROWS else 0
+        self.wanted_height = rows + extra + 1  # + the hint line
+        self.styles.height = self.wanted_height
 
     def render(self) -> str:
         if not self.entries:
@@ -232,15 +245,21 @@ class CommandMenu(Widget):
         marker = self._icons["prompt"]
         lines: list[str] = []
         width = max(len(e.name) for e in self.entries) + 1
-        for position, entry in enumerate(self.entries[:10]):
-            selected = position == (self.index % len(self.entries))
+        # Scroll the window so the highlighted row is always visible.
+        active = self.index % len(self.entries)
+        first = max(0, min(active - VISIBLE_ROWS + 1, len(self.entries) - VISIBLE_ROWS))
+        first = max(first, 0)
+        window = self.entries[first : first + VISIBLE_ROWS]
+        for offset, entry in enumerate(window):
+            position = first + offset
+            selected = position == active
             prefix = f"[b]{marker}[/b] " if selected else "  "
             name = f"[b]/{entry.name}[/b]" if selected else f"[dim]/{entry.name}[/dim]"
             pad = " " * (width - len(entry.name))
             summary = entry.summary if selected else f"[dim]{entry.summary}[/dim]"
             lines.append(f"{prefix}{name}{pad} {summary}")
-        if len(self.entries) > 10:
-            lines.append(f"  [dim]... {len(self.entries) - 10} more[/dim]")
+        if len(self.entries) > VISIBLE_ROWS:
+            lines.append(f"  [dim]+{len(self.entries) - VISIBLE_ROWS} more — keep typing[/dim]")
         lines.append("  [dim]↑↓ choose · Tab complete · Enter run · Esc dismiss[/dim]")
         return "\n".join(lines)
 
@@ -257,22 +276,17 @@ class ThinkingIndicator(Widget):
     the transcript as a record without taking space.
     """
 
-    DEFAULT_CSS = """
-    ThinkingIndicator {
-        display: none;
-        height: auto;
-        max-height: 4;
-        padding: 0 1;
-        margin: 0 0 1 0;
-        border-left: thick $warning;
-        background: $boost;
-    }
-    ThinkingIndicator.active { display: block; }
-    """
+    # No DEFAULT_CSS: layout for this widget lives in ui/theme.tcss so it can be
+    # reasoned about alongside everything else. An earlier DEFAULT_CSS here set
+    # `dock: bottom; layer: menu`, which quietly removed the widget from its
+    # container's vertical flow and let it render on top of the prompt.
 
     elapsed: reactive[float] = reactive(0.0)
     caption: reactive[str] = reactive("")
     frame: reactive[int] = reactive(0)
+
+    #: See CommandMenu.wanted_height.
+    wanted_height: int = 0
 
     def __init__(self, *, unicode_ok: bool = True, **kwargs) -> None:
         super().__init__(**kwargs)
@@ -288,6 +302,7 @@ class ThinkingIndicator(Widget):
         self.caption = ""
         self.elapsed = 0.0
         self.add_class("active")
+        self._resize()
         # 10 Hz: fast enough that the pulse reads as motion, slow enough to be free.
         # Guarded because start() is also called from unit tests where the widget is
         # not mounted in a running app and there is no event loop to schedule on.
@@ -300,7 +315,7 @@ class ThinkingIndicator(Widget):
         self.elapsed = time.monotonic() - self._started
         self.frame += 1
         if self.is_mounted:
-            self.refresh()
+            self._resize()
 
     def feed(self, delta: str) -> None:
         """Add reasoning text; the caption updates at phrase boundaries.
@@ -335,11 +350,18 @@ class ThinkingIndicator(Widget):
         duration = (time.monotonic() - self._started) if self._started is not None else 0.0
         self._started = None
         self.remove_class("active")
+        self.wanted_height = 0
+        self.styles.height = 0
         if self.is_mounted:
             for timer in list(self._timers):
                 timer.stop()
             self.refresh()
         return duration
+
+    def _resize(self) -> None:
+        """Explicit height so the footer grows; see CommandMenu._resize."""
+        self.wanted_height = 2 if self.caption else 1
+        self.styles.height = self.wanted_height
 
     def render(self) -> str:
         if self._started is None:

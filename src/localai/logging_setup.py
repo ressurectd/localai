@@ -3,7 +3,7 @@
 Two rules that matter for machine consumption:
 
 1. **Logs go to stderr, never stdout.** stdout is reserved for JSON output, so a
-   caller can safely do ``localai usage report --json | jq`` without a stray log line
+   caller can safely do ``ai usage report --json | jq`` without a stray log line
    corrupting the parse.
 2. **JSON mode is available** via ``--log-format json`` for callers that want to
    consume the log itself.

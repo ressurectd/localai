@@ -43,7 +43,9 @@ SECURITY_SENSITIVE = (
 TASKS: dict[str, Callable[[list[str]], int]] = {}
 
 
-def task(name: str, help_text: str) -> Callable[[Callable[[list[str]], int]], Callable[[list[str]], int]]:
+def task(
+    name: str, help_text: str
+) -> Callable[[Callable[[list[str]], int]], Callable[[list[str]], int]]:
     def register(fn: Callable[[list[str]], int]) -> Callable[[list[str]], int]:
         fn.__doc__ = help_text
         TASKS[name] = fn
@@ -228,13 +230,109 @@ def package(args: list[str]) -> int:
     return 0
 
 
+@task("exe", "Build the standalone ai.exe (no Python needed to run it)")
+def build_exe(args: list[str]) -> int:
+    """Freeze the app with PyInstaller.
+
+    One-folder, not one-file: a one-file build unpacks to a temp directory on every
+    launch, which costs a second or two of startup and trips some corporate
+    antivirus. The installer hides the folder, so one-file would only buy a tidier
+    dist/ at the cost of the thing users actually notice.
+    """
+    run(python(), "-m", "pip", "install", "pyinstaller", "--quiet", check=False)
+    if code := run(python(), "-m", "PyInstaller", "--clean", "--noconfirm", "localai.spec"):
+        return code
+
+    built = ROOT / "dist" / "ai" / ("ai.exe" if os.name == "nt" else "ai")
+    if not built.exists():
+        print(f"expected {built} but it was not produced", file=sys.stderr)
+        return 1
+
+    # A build that cannot answer --version is not a build. Frozen apps fail at
+    # runtime over missing data files, which no amount of successful packaging
+    # catches, so smoke-test before declaring victory.
+    print(f"\n{built}  ({_folder_size(built.parent) / 1024 / 1024:.0f} MB)")
+    print("smoke test: --version")
+    return run(str(built), "--version", check=True)
+
+
+def _folder_size(folder: Path) -> int:
+    return sum(f.stat().st_size for f in folder.rglob("*") if f.is_file())
+
+
+def _inno_compiler() -> Path | None:
+    """Locate ISCC.exe, Inno Setup's command-line compiler."""
+    candidates: list[Path] = []
+    if found := shutil.which("iscc"):
+        candidates.append(Path(found))
+    # winget installs per-user by default, which is neither Program Files location.
+    for base in (
+        os.environ.get("LOCALAPPDATA", ""),
+        os.environ.get("ProgramFiles(x86)", ""),
+        os.environ.get("ProgramFiles", ""),
+    ):
+        if base:
+            candidates.append(Path(base) / "Programs" / "Inno Setup 6" / "ISCC.exe")
+            candidates.append(Path(base) / "Inno Setup 6" / "ISCC.exe")
+    return next((c for c in candidates if c.exists()), None)
+
+
+@task("installer", "Build the Windows setup .exe (requires Inno Setup)")
+def build_installer(args: list[str]) -> int:
+    """Wrap dist/ai into the standard Inno Setup wizard."""
+    if not (ROOT / "dist" / "ai").exists():
+        print("dist/ai is missing; building it first.\n")
+        if code := build_exe([]):
+            return code
+
+    compiler = _inno_compiler()
+    if compiler is None:
+        print("Inno Setup is not installed.", file=sys.stderr)
+        print("", file=sys.stderr)
+        print("  winget install JRSoftware.InnoSetup", file=sys.stderr)
+        print("  or download from https://jrsoftware.org/isdl.php", file=sys.stderr)
+        print("", file=sys.stderr)
+        print("Then re-run: python tasks.py installer", file=sys.stderr)
+        return 78  # EX_CONFIG
+
+    if code := run(str(compiler), str(ROOT / "installer" / "ai.iss")):
+        return code
+
+    out = ROOT / "dist" / "installer"
+    for artefact in sorted(out.glob("*.exe")):
+        print(f"\n  {artefact}  ({artefact.stat().st_size / 1024 / 1024:.1f} MB)")
+    return 0
+
+
+@task("release", "Full release build: check, exe, installer")
+def release(args: list[str]) -> int:
+    """Everything a release needs, in the order that fails fastest."""
+    for name, fn in (("check", check), ("exe", build_exe), ("installer", build_installer)):
+        print(f"\n=== {name} ===")
+        if code := fn([]):
+            print(f"\nrelease aborted at: {name}", file=sys.stderr)
+            return code
+    print("\nRelease artefacts are in dist/installer.")
+    return 0
+
+
 @task("clean", "Remove build artefacts and caches (never touches user data)")
 def clean(args: list[str]) -> int:
     removed = 0
-    for pattern in ("build", "dist", "*.egg-info", ".pytest_cache", ".mypy_cache",
-                    ".ruff_cache", ".coverage", "htmlcov"):
+    for pattern in (
+        "build",
+        "dist",
+        "*.egg-info",
+        ".pytest_cache",
+        ".mypy_cache",
+        ".ruff_cache",
+        ".coverage",
+        "htmlcov",
+    ):
         for path in ROOT.glob(pattern):
-            shutil.rmtree(path, ignore_errors=True) if path.is_dir() else path.unlink(missing_ok=True)
+            shutil.rmtree(path, ignore_errors=True) if path.is_dir() else path.unlink(
+                missing_ok=True
+            )
             removed += 1
     for cache in ROOT.rglob("__pycache__"):
         shutil.rmtree(cache, ignore_errors=True)
@@ -258,12 +356,26 @@ def validate_docs(args: list[str]) -> int:
     problems: list[str] = []
 
     required = [
-        "AGENTS.md", "CLAUDE.md", "README.md", "CONTRIBUTING.md", "CHANGELOG.md",
-        "HANDOFF.md", "CODEOWNERS.md", ".project/status.json",
-        "docs/architecture.md", "docs/development.md", "docs/testing.md",
-        "docs/security-model.md", "docs/tool-api.md", "docs/permissions-engine.md",
-        "docs/database-schema.md", "docs/release-process.md", "docs/installation.md",
-        "docs/user-guide.md", "docs/troubleshooting.md", "docs/privacy.md",
+        "AGENTS.md",
+        "CLAUDE.md",
+        "README.md",
+        "CONTRIBUTING.md",
+        "CHANGELOG.md",
+        "HANDOFF.md",
+        "CODEOWNERS.md",
+        ".project/status.json",
+        "docs/architecture.md",
+        "docs/development.md",
+        "docs/testing.md",
+        "docs/security-model.md",
+        "docs/tool-api.md",
+        "docs/permissions-engine.md",
+        "docs/database-schema.md",
+        "docs/release-process.md",
+        "docs/installation.md",
+        "docs/user-guide.md",
+        "docs/troubleshooting.md",
+        "docs/privacy.md",
         "docs/training.md",
     ]
     for name in required:
@@ -281,7 +393,7 @@ def validate_docs(args: list[str]) -> int:
                 "BUILTIN_TOOL_NAMES disagrees with the registry: "
                 f"{set(registry.names()) ^ set(BUILTIN_TOOL_NAMES)}"
             )
-        tool_doc = (ROOT / "docs" / "tool-api.md")
+        tool_doc = ROOT / "docs" / "tool-api.md"
         if tool_doc.exists():
             text = tool_doc.read_text(encoding="utf-8")
             for name in registry.names():
@@ -291,7 +403,7 @@ def validate_docs(args: list[str]) -> int:
         # Every slash command must appear in the user guide.
         from localai.ui.commands import COMMANDS
 
-        guide = (ROOT / "docs" / "user-guide.md")
+        guide = ROOT / "docs" / "user-guide.md"
         if guide.exists():
             text = guide.read_text(encoding="utf-8")
             for command in COMMANDS.all():
@@ -301,7 +413,7 @@ def validate_docs(args: list[str]) -> int:
         # Every documented environment variable must exist in ENV_OVERRIDES.
         from localai.config.manager import ENV_OVERRIDES
 
-        dev = (ROOT / "docs" / "development.md")
+        dev = ROOT / "docs" / "development.md"
         if dev.exists():
             text = dev.read_text(encoding="utf-8")
             for variable in ENV_OVERRIDES:
@@ -339,7 +451,9 @@ def changed_security(args: list[str]) -> int:
         print("not a git repository, or git is unavailable", file=sys.stderr)
         return 0
 
-    changed = {line.strip().replace("\\", "/") for line in result.stdout.splitlines() if line.strip()}
+    changed = {
+        line.strip().replace("\\", "/") for line in result.stdout.splitlines() if line.strip()
+    }
     hits = sorted(changed & set(SECURITY_SENSITIVE))
     if not hits:
         print("No security-sensitive files changed.")
@@ -363,8 +477,10 @@ def secret_scan(args: list[str]) -> int:
     import re
 
     patterns = [
-        (re.compile(r"(?i)(api[_-]?key|secret|password|token)\s*[=:]\s*['\"][^'\"]{12,}"),
-         "possible hardcoded credential"),
+        (
+            re.compile(r"(?i)(api[_-]?key|secret|password|token)\s*[=:]\s*['\"][^'\"]{12,}"),
+            "possible hardcoded credential",
+        ),
         (re.compile(r"-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----"), "private key"),
         (re.compile(r"(?i)\bsk-[a-z0-9]{20,}"), "API key"),
         (re.compile(r"(?i)\bghp_[a-z0-9]{30,}"), "GitHub token"),
@@ -372,9 +488,7 @@ def secret_scan(args: list[str]) -> int:
     forbidden_names = ("localai.db", "audit.jsonl", ".env", "conversations.json")
     problems: list[str] = []
 
-    result = subprocess.run(
-        ["git", "ls-files"], cwd=ROOT, capture_output=True, text=True
-    )
+    result = subprocess.run(["git", "ls-files"], cwd=ROOT, capture_output=True, text=True)
     files = (
         [ROOT / f for f in result.stdout.splitlines() if f.strip()]
         if result.returncode == 0

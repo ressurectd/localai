@@ -1,4 +1,4 @@
-"""The Textual application.
+r"""The Textual application.
 
 Presentation and interaction only. Everything else lives behind
 :class:`~localai.app.Application`: the agent loop, the permissions engine, storage and
@@ -7,25 +7,36 @@ Ollama.
 
 **Workers matter here.** ``push_screen_wait`` raises ``NoActiveWorker`` unless it is
 called from a Textual worker. Every method that opens a modal and waits for an answer
--- including :meth:`_confirm_tool`, which is the permission dialog -- must therefore
-run inside an ``@work`` context. ``_run_turn`` is a worker for exactly this reason:
-the confirmation prompt is raised from inside it. Removing that decorator silently
-breaks the security prompt, so ``tests/integration/test_ui_flows.py`` asserts it.
+-- including :meth:`_confirm_tool`, which is the permission dialog -- must run inside
+an ``@work`` context. :meth:`_run_turn` is a worker for exactly that reason: the
+confirmation prompt is raised from inside it. Removing that decorator silently breaks
+every security prompt, so ``tests/integration/test_ui_flows.py`` asserts it.
+
+**Heights are explicit.** Nothing below the transcript uses ``auto`` or ``1fr``,
+because assigning a child's height does not invalidate a parent's automatic height in
+Textual. See :meth:`_relayout`.
 
 Layout::
 
-    ◆ model · mode · cwd · context meter                       <- topbar
-    ┌──────────────────────────────────────────────────────┐
-    │  conversation: you, the model, reasoning, tools       │
-    └──────────────────────────────────────────────────────┘
-    ◐ thinking  ▂▃▄▅▆▇  3.4s                                  <- thinking indicator
-      considering the budget figures...
-    ┌ /mo ─────────────────────────────────────────────────┐
-    │ ❯ /model    show or set the current model            │  <- command menu
-    │   /models   browse and switch models                 │
-    └──────────────────────────────────────────────────────┘
-    ❯ your prompt                                             <- input
-    19 tools · 2 calls · 43 tok/s · local only                <- status bar
+    * qwen3:8b   > D:/Work   ####....  ~4,210/40,960          <- top bar
+                                                                 (what, and where)
+      you                                                     <- transcript
+      > read notes.md
+        + 84 lines
+      * the model's answer
+
+      ( thinking  ~~~~~~  3.4s                                <- thinking indicator
+        considering the budget figures...                        (only while working)
+
+      > /model    model picker                                <- command menu
+        /models   model picker                                   (only after "/")
+
+      ------------------------------------------
+      your prompt                                             <- input
+
+     ( auto   19 tools . 2 calls . 43 tok/s   /help           <- status bar
+                                                                 (how much freedom,
+                                                                  where help is)
 """
 
 from __future__ import annotations
@@ -39,7 +50,7 @@ from typing import Any, ClassVar
 
 from textual import on, work
 from textual.app import App, ComposeResult
-from textual.containers import Container, VerticalScroll
+from textual.containers import Vertical, VerticalScroll
 from textual.widgets import Static
 
 from localai.agent.loop import AgentEvent, AgentLoop, EventKind
@@ -110,6 +121,7 @@ class LocalAIApp(App[None]):
     SUB_TITLE = "local models, your files"
 
     BINDINGS: ClassVar[list] = [
+        ("ctrl+c", "request_quit", "Quit (twice)"),
         ("ctrl+q", "emergency_stop", "Emergency stop"),
         ("escape", "cancel", "Cancel"),
         ("ctrl+p", "command_palette_open", "Commands"),
@@ -140,8 +152,10 @@ class LocalAIApp(App[None]):
         self._stream_target: Static | None = None
         self._stream_buffer: list[str] = []
         self._thought_seconds = 0.0
+        self._quit_armed_at = 0.0
         self.unicode_ok = terminal_supports_unicode()
         self.icon = icons(self.unicode_ok)
+
         # Cached at mount. App.query_one searches the *active* screen, so once a modal
         # is open a query for "#topbar" raises NoMatches -- which previously killed the
         # turn worker in the middle of a confirmation prompt.
@@ -151,6 +165,7 @@ class LocalAIApp(App[None]):
         self._thinking: ThinkingIndicator | None = None
         self._menu: CommandMenu | None = None
         self._prompt: PromptArea | None = None
+        self._input_area: Vertical | None = None
 
         # The runner calls this whenever policy requires confirmation. Wiring it here
         # is what connects the permissions engine to the modal dialog.
@@ -188,9 +203,14 @@ class LocalAIApp(App[None]):
     def compose(self) -> ComposeResult:
         yield Static("", id="topbar")
         yield VerticalScroll(id="conversation")
-        yield ThinkingIndicator(unicode_ok=self.unicode_ok, id="thinking")
-        yield CommandMenu(unicode_ok=self.unicode_ok, id="command-menu")
-        with Container(id="input-area"):
+        # Menu, thinking indicator and prompt are siblings inside one Vertical, so
+        # their order is guaranteed by the container rather than by dock resolution.
+        # Earlier arrangements docked each row independently or nested them in an
+        # auto-height wrapper; both let Textual choose the stacking, and both drew the
+        # thinking indicator *behind* the input box where it was never seen.
+        with Vertical(id="input-area"):
+            yield CommandMenu(unicode_ok=self.unicode_ok, id="command-menu")
+            yield ThinkingIndicator(unicode_ok=self.unicode_ok, id="thinking")
             editor = PromptArea(id="prompt", soft_wrap=True, show_line_numbers=False)
             editor.tab_behavior = "focus"
             yield editor
@@ -199,10 +219,12 @@ class LocalAIApp(App[None]):
     async def on_mount(self) -> None:
         self._topbar = self.query_one("#topbar", Static)
         self._statusbar = self.query_one("#statusbar", Static)
-        self._conversation = self.conversation
-        self._thinking = self.thinking
-        self._menu = self.menu
-        self._prompt = self.prompt
+        self._conversation = self.query_one("#conversation", VerticalScroll)
+        self._thinking = self.query_one("#thinking", ThinkingIndicator)
+        self._menu = self.query_one("#command-menu", CommandMenu)
+        self._prompt = self.query_one("#prompt", PromptArea)
+        self._input_area = self.query_one("#input-area", Vertical)
+        self._relayout()
 
         for theme in art.custom_themes():
             self.register_theme(theme)  # type: ignore[arg-type]
@@ -217,20 +239,51 @@ class LocalAIApp(App[None]):
             self._resume_conversation(self._resume_id)
         self._refresh_chrome()
 
+    def _relayout(self) -> None:
+        """Assign every height below the transcript, and give the rest to it.
+
+        Nothing here uses ``height: auto`` or ``1fr``, because assigning a child's
+        height does **not** invalidate a parent's automatic height in Textual. Every
+        earlier arrangement -- docking each row, an auto-height footer, an auto-height
+        input container -- left the command menu and the thinking indicator rendering
+        at full size *outside* their parent's box, overflowing upward across the
+        input. Doing the arithmetic here makes the layout deterministic and testable.
+        """
+        if self._conversation is None or self._input_area is None:
+            return
+        prompt_lines = min(max(len(self.prompt.text.splitlines()), 1), 10)
+        input_height = (
+            self.menu.wanted_height
+            + self.thinking.wanted_height
+            + prompt_lines
+            + 1  # the hairline top border
+        )
+        self._input_area.styles.height = input_height
+        self._conversation.styles.height = max(
+            self.size.height - 1 - input_height - 1,
+            3,  # top bar, status bar
+        )
+
+    def on_resize(self) -> None:
+        self._relayout()
+
     def _banner(self) -> None:
-        i = self.icon
+        """Startup mark. Deliberately two lines.
+
+        The full key reference lives in ``/help``: a wall of shortcuts on every launch
+        is noise you stop reading after the first session, and it costs the screen
+        space the conversation should have.
+        """
+        accent = self.state.identity.palette.accent
         self._write(
-            f"[b]ai[/b]  {i['system']}  local models, your files, your machine",
-            "msg-system",
+            f"[{accent}][b]ai[/b][/]  [dim]local models · your files · your machine[/dim]",
+            "banner",
         )
-        self._write(
-            "[dim]F1 help · Ctrl+P commands · Ctrl+M model · Ctrl+O mode · "
-            "Ctrl+T theme · Ctrl+Q emergency stop · type / for commands[/dim]",
-            "detail",
-        )
+        self._write("[dim]type [b]/[/b] for commands · [b]/help[/b] for keys[/dim]", "detail")
         if self.sandbox:
             self._write(
-                f"{i['warning']}  SANDBOX — mock model, dry-run forced, no real file is touched.",
+                f"{self.icon['warning']}  SANDBOX — mock model, dry-run forced, nothing is "
+                "written.",
                 "msg-notice",
             )
 
@@ -263,7 +316,7 @@ class LocalAIApp(App[None]):
                 reverse=True,
             )
             chosen = ranked[0].info
-        await self._apply_model(chosen, announce=True)
+        await self._apply_model(chosen)
 
     async def _apply_model(self, model: ModelInfo, *, announce: bool = True) -> None:
         """Adopt a model, including taking on its colour identity."""
@@ -271,39 +324,33 @@ class LocalAIApp(App[None]):
         self.state.model_info = model
         self.state.context_limit = model.context_length or 8192
         self.state.identity = art.identify(model.name, model.family)
+        identity = self.state.identity
 
         if announce:
-            identity = self.state.identity
             self._write(
                 f"[{identity.palette.glow}]{identity.render(unicode_ok=self.unicode_ok)}[/]",
                 "sigil",
             )
-            capabilities = ", ".join(sorted(model.capabilities)) or "chat"
             title = identity.display or model.name
             tagline = f" — {identity.tagline}" if identity.tagline else ""
+            capabilities = ", ".join(sorted(model.capabilities)) or "chat"
             self._write(
                 f"[{identity.palette.accent}][b]{model.name}[/b][/]  [dim]{title}{tagline}[/dim]",
                 "msg-system",
             )
-            self._write(
-                f"[dim]  {capabilities}  ·  ctx {self.state.context_limit:,}[/dim]", "detail"
-            )
+            self._write(f"[dim]{capabilities} · ctx {self.state.context_limit:,}[/dim]", "detail")
             if not model.supports_tools:
                 self._write(
-                    f"  {self.icon['warning']} No native tool calling — the structured text "
+                    f"{self.icon['warning']} No native tool calling — the structured text "
                     "fallback will be used, which is less reliable.",
                     "msg-notice",
                 )
 
         # The prompt border takes the model's colour, so the whole frame shifts with
         # the model. Guarded because a cosmetic failure must never block a model
-        # switch -- but logged rather than swallowed, since a silently missing accent
-        # is still a defect, just not one worth aborting for.
+        # switch, but logged rather than swallowed.
         try:
-            self.query_one("#input-area").styles.border = (
-                "round",
-                self.state.identity.palette.accent,
-            )
+            self.query_one("#input-area").styles.border_top = ("hkey", identity.palette.accent)
         except Exception:
             self.log.warning("could not apply the model accent colour", exc_info=True)
         self._refresh_chrome()
@@ -330,21 +377,13 @@ class LocalAIApp(App[None]):
 
         cwd = str(self.core.cwd)
         if len(cwd) > 38:
-            cwd = "…" + cwd[-37:] if self.unicode_ok else "..." + cwd[-35:]
+            cwd = ("…" if self.unicode_ok else "...") + cwd[-37:]
 
-        mode_icon = {
-            PermissionMode.MANUAL: i["lock_manual"],
-            PermissionMode.AUTO: i["lock_auto"],
-            PermissionMode.WORKSPACE: i["lock_workspace"],
-            PermissionMode.BYPASS: i["lock_bypass"],
-        }[mode]
-
+        # Top bar: what you are talking to, and where it is working.
         self.topbar.update(
-            f"[{accent}]{state.identity.icon}[/] "
-            f"[b]{state.model or 'no model'}[/b]   "
-            f"[{self._mode_markup(mode)}]{mode_icon} {mode.value}[/]   "
-            f"[dim]{i['cwd']} {cwd}[/dim]   "
-            f"[{meter_class}]{bar}[/] [dim]{exact}{used:,}/{limit:,}[/dim]"
+            f" [{accent}]{state.identity.icon}[/] [{accent}][b]{state.model or 'no model'}[/b][/]"
+            f"   [dim]{i['cwd']} {cwd}[/dim]"
+            f"   [{meter_class}]{bar}[/] [dim]{exact}{used:,}/{limit:,}[/dim]"
         )
 
         flags = []
@@ -359,12 +398,22 @@ class LocalAIApp(App[None]):
         if self.sandbox:
             flags.append("SANDBOX")
 
-        throughput = f"{state.last_tps:.0f} tok/s" if state.last_tps else "—"
-        flag_text = f"[b yellow]{' '.join(flags)}[/b yellow]" if flags else "[dim]local only[/dim]"
+        mode_icon = {
+            PermissionMode.MANUAL: i["lock_manual"],
+            PermissionMode.AUTO: i["lock_auto"],
+            PermissionMode.WORKSPACE: i["lock_workspace"],
+            PermissionMode.BYPASS: i["lock_bypass"],
+        }[mode]
+
+        # Status bar: how much freedom the model has, and where help is. That is what
+        # you actually glance at mid-task; the key reference lives in /help.
+        throughput = f" · [b]{state.last_tps:.0f}[/b] tok/s" if state.last_tps else ""
+        calls = f" · [b]{state.tool_calls}[/b] calls" if state.tool_calls else ""
+        flag_text = f"   [b yellow]{' '.join(flags)}[/b yellow]" if flags else ""
         self.statusbar.update(
-            f"[dim]{len(self.core.registry)} tools · {state.tool_calls} calls · "
-            f"{throughput}[/dim]  {flag_text}  "
-            f"[dim]· Enter send · Shift+Enter newline · / commands[/dim]"
+            f" [{self._mode_markup(mode)}]{mode_icon} {mode.value}[/]"
+            f"[dim]   {len(self.core.registry)} tools{calls}{throughput}[/dim]"
+            f"{flag_text}[dim]   /help[/dim]"
         )
 
     @staticmethod
@@ -384,6 +433,11 @@ class LocalAIApp(App[None]):
         view.scroll_end(animate=False)
         return widget
 
+    def _flash(self, text: str) -> None:
+        """Transient note in the status bar, restored on the next refresh."""
+        self.statusbar.update(f" [b]{text}[/b]")
+        self.set_timer(2.0, self._refresh_chrome)
+
     # -- input and the command menu -------------------------------------------
 
     @on(PromptArea.TextEdited)
@@ -392,31 +446,38 @@ class LocalAIApp(App[None]):
         menu = self.menu
         prompt = self.prompt
         text = event.text
+        self._relayout()  # a multi-line prompt grows the input too
 
         # Only the first line, and only when it is the whole input, counts as a
         # command: a "/" inside a sentence or on line three is just a character.
         if not text.startswith("/") or "\n" in text:
             menu.hide()
             prompt.menu_open = False
+            self._relayout()
             return
 
-        entries = [
-            MenuEntry(name=c.name, summary=c.summary, usage=c.usage)
-            for c in COMMANDS.matching(text[1:].split(" ")[0])
-        ]
         # Once a full command plus a space is typed, the menu has done its job.
         if " " in text:
             menu.hide()
             prompt.menu_open = False
+            self._relayout()
             return
-        menu.show(entries)
+
+        menu.show(
+            [
+                MenuEntry(name=c.name, summary=c.summary, usage=c.usage)
+                for c in COMMANDS.matching(text[1:])
+            ]
+        )
         prompt.menu_open = menu.is_open
+        self._relayout()
 
     @on(PromptArea.NavigateMenu)
     def _on_menu_navigate(self, event: PromptArea.NavigateMenu) -> None:
         if event.direction == "escape":
             self.menu.hide()
             self.prompt.menu_open = False
+            self._relayout()
         elif event.direction == "tab":
             self._complete_from_menu()
         else:
@@ -424,27 +485,28 @@ class LocalAIApp(App[None]):
 
     def _complete_from_menu(self) -> None:
         """Replace the input with the highlighted command."""
-        menu = self.menu
-        selected = menu.selected
+        selected = self.menu.selected
         if selected is None:
             return
         prompt = self.prompt
         # A command taking arguments gets a trailing space so you can type straight on.
         prompt.text = f"/{selected.name}" + (" " if selected.usage else "")
         prompt.move_cursor(prompt.document.end)
-        menu.hide()
+        self.menu.hide()
         prompt.menu_open = False
+        self._relayout()
 
     @on(PromptArea.Submitted)
     async def _on_prompt_submitted(self, event: PromptArea.Submitted) -> None:
         menu = self.menu
-        # Enter with the menu open picks the highlighted entry rather than sending
-        # a half-typed command.
+        # Enter with the menu open picks the highlighted entry rather than sending a
+        # half-typed command.
         if menu.is_open and menu.selected and event.text.strip() != f"/{menu.selected.name}":
             self._complete_from_menu()
             return
         menu.hide()
         self.prompt.menu_open = False
+        self._relayout()
         await self._submit()
 
     async def _submit(self) -> None:
@@ -457,6 +519,7 @@ class LocalAIApp(App[None]):
             return
 
         prompt.text = ""
+        self._relayout()
         if text.startswith("/"):
             await self._run_command(text)
         else:
@@ -464,6 +527,11 @@ class LocalAIApp(App[None]):
 
     async def _run_command(self, line: str) -> None:
         result = COMMANDS.dispatch(self, line)
+        # Help goes to a scrollable modal, not the transcript: it is a reference you
+        # consult and dismiss, not part of the conversation.
+        if result.action == "show_help_screen":
+            self.push_screen(TextScreen("ai — keys and commands", result.message))
+            return
         if result.message:
             self._write(
                 result.message,
@@ -520,7 +588,7 @@ class LocalAIApp(App[None]):
                         "Settings",
                         f"Configuration file:\n  {self.core.paths.config_file}\n\n"
                         "Edit it in a text editor, then restart. Validate with:\n"
-                        "  localai config validate\n\n"
+                        "  ai config validate\n\n"
                         "Runtime toggles:\n"
                         "  /mode                     permission mode picker\n"
                         "  /mode readonly on|off\n"
@@ -529,8 +597,6 @@ class LocalAIApp(App[None]):
                         "  /permissions killswitch on|off",
                     )
                 )
-            case "show_help":
-                await self._run_command("/help")
 
     # -- conversation ---------------------------------------------------------
 
@@ -567,16 +633,17 @@ class LocalAIApp(App[None]):
 
         **This must remain a worker.** The permission confirmation dialog is raised
         from inside it via ``push_screen_wait``, which raises ``NoActiveWorker``
-        outside a worker context. Removing ``@work`` breaks every confirmation
-        prompt -- asserted by ``test_confirmation_dialog_appears_in_manual_mode``.
+        outside a worker context. Removing ``@work`` breaks every confirmation prompt.
         """
         state = self.state
         state.busy = True
         self._stream_target = None
         self._stream_buffer = []
+        self._thought_seconds = 0.0
+
         thinking = self.thinking
         thinking.start(f"{state.identity.display or 'model'} is thinking")
-        self._thought_seconds = 0.0
+        self._relayout()
 
         context = self.core.tool_context(conversation_id=state.conversation_id, cancel=self._cancel)
         loop = AgentLoop(self.core.provider, self.core.runner, caller=self.core.caller)
@@ -605,10 +672,11 @@ class LocalAIApp(App[None]):
             self._write(f"Unexpected error: {type(exc).__name__}: {exc}", "msg-error")
         finally:
             self._thought_seconds += thinking.stop()
-            duration = self._thought_seconds
-            if duration > 0.05:
+            self._relayout()
+            if self._thought_seconds > 0.05:
                 self._write(
-                    f"[dim]{self.icon['cwd']} thought for {duration:.1f}s[/dim]", "msg-thinking"
+                    f"[dim]{self.icon['cwd']} thought for {self._thought_seconds:.1f}s[/dim]",
+                    "msg-thinking",
                 )
             state.busy = False
             self._refresh_chrome()
@@ -624,6 +692,7 @@ class LocalAIApp(App[None]):
                 # First content means reasoning is over: fold the indicator away.
                 if self._stream_target is None:
                     self._thought_seconds += thinking.stop()
+                    self._relayout()
                     self._stream_target = self._write(
                         f"[{accent}]{i['assistant']}[/] ", "msg-assistant"
                     )
@@ -636,19 +705,24 @@ class LocalAIApp(App[None]):
 
             case EventKind.THINKING_DELTA:
                 if self.core.config.ui.show_thinking:
+                    before = thinking.wanted_height
                     thinking.feed(event.text)
+                    if thinking.wanted_height != before:
+                        self._relayout()
 
             case EventKind.MESSAGE_COMPLETE:
                 self._stream_target = None
                 self._stream_buffer = []
 
             case EventKind.TOOL_REQUESTED:
-                # Marked distinctly from model prose: this is a *request*, not an action.
+                # A *request*, marked distinctly from anything the model merely said.
                 self._write(f"{i['tool_request']} {event.text}", "tool-request")
                 thinking.start(f"running {event.tool_call.name if event.tool_call else 'tool'}")
+                self._relayout()
 
             case EventKind.TOOL_RESULT:
                 self._thought_seconds += thinking.stop()
+                self._relayout()
                 self.state.tool_calls += 1
                 result = event.tool_result
                 if result is None:
@@ -749,14 +823,15 @@ class LocalAIApp(App[None]):
     ) -> bool:
         """Show the confirmation modal and translate the answer into a grant.
 
-        Called by :class:`~localai.tools.runner.ToolRunner` from inside ``_run_turn``,
-        which is a worker -- that is what makes ``push_screen_wait`` legal here.
-        Returning False is always safe: the tool simply does not run.
+        Called by :class:`~localai.tools.runner.ToolRunner` from inside
+        :meth:`_run_turn`, which is a worker -- that is what makes
+        ``push_screen_wait`` legal here. Returning False is always safe: the tool
+        simply does not run.
         """
-        thinking = self.thinking
-        thinking.stop()
-        danger = "danger-text" if tool.risk >= RiskLevel.DESTRUCTIVE else "msg-notice"
-        self._write(f"  {self.icon['lock_manual']} waiting for your decision…", danger)
+        self._thought_seconds += self.thinking.stop()
+        self._relayout()
+        style = "danger-text" if tool.risk >= RiskLevel.DESTRUCTIVE else "msg-notice"
+        self._write(f"  {self.icon['lock_manual']} waiting for your decision…", style)
 
         choice = await self.push_screen_wait(ConfirmToolScreen(tool, arguments, decision))
 
@@ -788,17 +863,32 @@ class LocalAIApp(App[None]):
 
     # -- actions --------------------------------------------------------------
 
+    def action_request_quit(self) -> None:
+        """Ctrl+C once warns; twice within the window exits.
+
+        A single Ctrl+C is far too easy to hit by reflex while reading output, and
+        losing a session to a stray keystroke is worse than one extra press. The
+        window is short enough that a deliberate double-tap always works.
+        """
+        now = time.monotonic()
+        if now - self._quit_armed_at < 2.0:
+            self.exit()
+            return
+        self._quit_armed_at = now
+        self._flash("Press Ctrl+C again to exit")
+
     def action_emergency_stop(self) -> None:
         """Cancel everything in flight and engage the kill switch.
 
-        Deliberately heavy-handed: this is what someone reaches for when things are
-        going wrong, so it stops current work *and* prevents the next mutating action
-        until explicitly cleared.
+        Deliberately heavy-handed: this is what you reach for when things are going
+        wrong, so it stops current work *and* prevents the next mutating action until
+        explicitly cleared.
         """
         self._cancel.set()
         self.workers.cancel_group(self, "turn")
         self.core.set_kill_switch(True)
         self.thinking.stop()
+        self._relayout()
         self._write(
             f"{self.icon['kill']} EMERGENCY STOP — generation cancelled and the kill switch "
             "is engaged. No tool can modify anything until you run "
@@ -809,10 +899,10 @@ class LocalAIApp(App[None]):
         self._refresh_chrome()
 
     def action_cancel(self) -> None:
-        menu = self.menu
-        if menu.is_open:
-            menu.hide()
+        if self.menu.is_open:
+            self.menu.hide()
             self.prompt.menu_open = False
+            self._relayout()
             return
         if self.state.busy:
             self._cancel.set()
@@ -835,14 +925,42 @@ class LocalAIApp(App[None]):
     async def _switch_model_worker(self, name: str) -> None:
         await self._switch_model(name)
 
-    async def _switch_model(self, name: str) -> None:
-        """Switch models mid-conversation without restarting."""
+    async def _switch_model(self, name: str, *, clear_view: bool = True) -> None:
+        """Switch models mid-conversation without restarting.
+
+        The transcript is cleared so the new model's mark is the only one on screen --
+        stacking a second sigil under the previous conversation reads as clutter
+        rather than as a change of state.
+
+        But clearing the *view* is not clearing the *context*: the new model still
+        receives everything said so far. Wiping the screen without saying so would
+        imply a fresh start that has not happened, so the carried message count is
+        stated explicitly and ``/new`` is offered for an actual reset.
+
+        ``clear_view=False`` is used by :meth:`_resume_conversation`, which has just
+        rendered the history and must not have it erased.
+        """
         try:
             model = await self.core.provider.show_model(name)
         except LocalAIError as exc:
             self._write(exc.message, "msg-error")
             return
-        await self._apply_model(model, announce=True)
+
+        if clear_view:
+            await self.conversation.remove_children()
+
+        await self._apply_model(model)
+
+        if clear_view:
+            carried = sum(1 for m in self.state.messages if m.role is not Role.SYSTEM)
+            if carried:
+                self._write(
+                    f"[dim]continuing — {carried} earlier message"
+                    f"{'s' if carried != 1 else ''} still in context · "
+                    f"[b]/new[/b] for a fresh start[/dim]",
+                    "detail",
+                )
+
         if self.state.conversation_id:
             self.core.conversations.set_model(self.state.conversation_id, name)
 
@@ -889,7 +1007,7 @@ class LocalAIApp(App[None]):
 
     async def action_show_help(self) -> None:
         result = COMMANDS.dispatch(self, "/help")
-        self.push_screen(TextScreen("Help", result.message))
+        self.push_screen(TextScreen("ai — keys and commands", result.message))
 
     async def action_command_palette_open(self) -> None:
         """Ctrl+P drops a '/' into the prompt, which opens the live menu."""
@@ -948,6 +1066,7 @@ class LocalAIApp(App[None]):
 
         i = self.icon
         self._write(f"{i['system']} Resumed: [b]{record.title or record.id}[/b]", "msg-system")
+        accent = self.state.identity.palette.accent
         for message in self.state.messages:
             match message.role:
                 case Role.USER:
@@ -955,16 +1074,15 @@ class LocalAIApp(App[None]):
                 case Role.ASSISTANT:
                     if message.content:
                         self._write(
-                            f"[{self.state.identity.palette.accent}]{i['assistant']}[/] "
-                            f"{message.content}",
-                            "msg-assistant",
+                            f"[{accent}]{i['assistant']}[/] {message.content}", "msg-assistant"
                         )
                     for call in message.tool_calls:
                         self._write(f"{i['tool_request']} {call.name}", "tool-request")
                 case Role.TOOL:
                     self._write(f"  {i['tool_ok']} {message.name}", "tool-ok")
         if record.model and record.model != self.state.model:
-            await self._switch_model(record.model)
+            # The history is already on screen; do not wipe it.
+            await self._switch_model(record.model, clear_view=False)
         self._refresh_chrome()
 
     def _new_conversation(self, title: str) -> None:

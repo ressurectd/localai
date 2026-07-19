@@ -8,7 +8,17 @@
 - **Ollama** with at least one model
 - Windows Terminal recommended; classic PowerShell and cmd work
 
-## Quick install
+## Quick install — the installer
+
+Download `ai-setup-<version>.exe` from the release and run it. Standard Windows
+wizard; installs per-user, so there is no UAC prompt and no admin rights needed.
+
+Tick **"Add ai to my PATH"** (default) and you can type `ai` in any new terminal.
+
+Python is **not** required — the installer bundles everything. You still need Ollama
+and at least one model.
+
+## Install from source
 
 ```powershell
 git clone <repo> localai

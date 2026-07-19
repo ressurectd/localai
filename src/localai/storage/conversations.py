@@ -267,7 +267,7 @@ class ConversationStore:
         """Search message text, preferring FTS5 and falling back to LIKE.
 
         The fallback is not a silent downgrade: :attr:`Database.fts_available` is
-        reported by ``localai doctor`` so the user knows which engine is in use.
+        reported by ``ai doctor`` so the user knows which engine is in use.
         """
         if self.db.fts_available:
             rows = self.db.query(

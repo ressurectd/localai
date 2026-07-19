@@ -112,7 +112,7 @@ class Tool(ABC):
     #: JSON Schema (draft 2020-12) for the arguments object.
     parameters: dict[str, Any] = {"type": "object", "properties": {}}
 
-    #: Free-form grouping used by ``localai tools list`` and MCP tool filtering.
+    #: Free-form grouping used by ``ai tools list`` and MCP tool filtering.
     category: str = "general"
 
     @abstractmethod

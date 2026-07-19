@@ -1,0 +1,75 @@
+name: CI
+
+# Windows-first by design: the path-safety tests create real NTFS junctions, the
+# Recycle Bin tests call SHFileOperationW, and `list_processes` shells out to
+# tasklist. Running only on Linux would skip exactly the code most worth testing.
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: check (py${{ matrix.python }})
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.11 is the floor declared in pyproject.toml; 3.13 catches anything the
+        # floor version tolerates but newer runtimes do not.
+        python: ["3.11", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Format
+        run: python -m ruff format --check src tests
+
+      - name: Lint
+        run: python -m ruff check src tests
+
+      - name: Type check
+        run: python -m mypy
+
+      - name: Test
+        # No Ollama on the runner. Nothing needs one: conftest.py redirects
+        # LOCALAI_HOME to a temp directory and MockProvider replaces the daemon.
+        run: python -m pytest tests -q
+
+      - name: Validate agent-facing docs
+        run: python tasks.py validate-docs
+
+  security:
+    name: security boundaries
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - run: python -m pip install -e ".[dev]"
+
+      - name: Permission and path-safety boundaries
+        # Run separately and verbosely. These encode the security contract; when one
+        # fails the failure is the finding, and it should be obvious in the log rather
+        # than buried among four hundred dots.
+        run: python -m pytest -m security -v
+
+      - name: Scan for secrets and private data
+        run: python tasks.py secret-scan
