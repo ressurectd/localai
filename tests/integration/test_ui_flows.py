@@ -20,6 +20,7 @@ import pytest
 
 from localai.app import Application
 from localai.config.models import PermissionMode
+from localai.domain.messages import Message, Role
 from localai.providers.mock import MockProvider
 from localai.ui import art
 from localai.ui.app import LocalAIApp
@@ -422,3 +423,265 @@ async def test_message_still_sends_on_enter(tui: LocalAIApp, provider: MockProvi
         await pilot.press("enter")
         await settle(pilot, 30)
         assert any(m.content == "hello" for m in tui.state.messages)
+
+
+# --- layout and chrome -------------------------------------------------------
+
+
+async def test_thinking_indicator_sits_above_the_input_not_behind_it(
+    tui: LocalAIApp,
+) -> None:
+    """Regression: the indicator was drawn *underneath* the input box.
+
+    Each of thinking/menu/input/status was docked to the bottom independently, so
+    Textual chose the stacking order and put the indicator inside the input's region.
+    It was active, sized and rendering -- and completely invisible. They now share one
+    footer container with an explicit vertical layout.
+    """
+    async with tui.run_test(size=(90, 30)) as pilot:
+        await settle(pilot, 8)
+        tui.thinking.start("thinking")
+        tui.thinking.feed("A complete phrase ends here. ")
+        await settle(pilot, 8)
+
+        thinking = tui.query_one("#thinking").region
+        prompt = tui.query_one("#prompt").region
+
+        assert thinking.height >= 2, "the caption line did not expand the widget"
+        assert thinking.y + thinking.height <= prompt.y, "indicator overlaps the prompt"
+
+
+async def test_command_menu_sits_above_the_input(tui: LocalAIApp) -> None:
+    async with tui.run_test(size=(90, 30)) as pilot:
+        await settle(pilot, 8)
+        await pilot.press("slash")
+        await settle(pilot, 8)
+
+        menu = tui.query_one("#command-menu").region
+        prompt = tui.query_one("#prompt").region
+        conversation = tui.query_one("#conversation").region
+
+        assert menu.height > 0, "the menu has no height"
+        assert menu.y + menu.height <= prompt.y, "the menu covers the prompt"
+        assert menu.y >= conversation.y + conversation.height, "the menu covers the transcript"
+
+
+async def test_status_bar_is_the_last_row(tui: LocalAIApp) -> None:
+    async with tui.run_test(size=(90, 30)) as pilot:
+        await settle(pilot, 8)
+        status = tui.query_one("#statusbar").region
+        prompt = tui.query_one("#prompt").region
+        assert status.y > prompt.y, "the status bar is not the last row"
+
+
+async def test_status_bar_shows_the_mode_and_a_help_pointer(tui: LocalAIApp) -> None:
+    """The bottom bar is what you glance at: how much freedom it has, and where help is."""
+    async with tui.run_test() as pilot:
+        await settle(pilot, 8)
+        text = str(tui.statusbar.content)
+        assert "auto" in text
+        assert "/help" in text
+        assert "tools" in text
+
+
+async def test_top_bar_shows_model_cwd_and_context(tui: LocalAIApp) -> None:
+    async with tui.run_test() as pilot:
+        await settle(pilot, 8)
+        text = str(tui.topbar.content)
+        assert "mock-tools:8b" in text
+        assert "32,768" in text  # context limit
+
+
+async def test_startup_is_quiet(tui: LocalAIApp) -> None:
+    """The key reference belongs in /help, not on screen at every launch."""
+    async with tui.run_test() as pilot:
+        await settle(pilot, 10)
+        text = rendered(tui)
+        assert "Ctrl+M" not in text
+        assert "Ctrl+Q" not in text
+        assert "/help" in text  # just the pointer
+
+
+async def test_help_opens_a_screen_rather_than_filling_the_transcript(
+    tui: LocalAIApp,
+) -> None:
+    async with tui.run_test() as pilot:
+        await settle(pilot, 8)
+        before = len(tui.query("#conversation Static"))
+        tui.query_one("#prompt", PromptArea).text = "/help"
+        await pilot.press("enter")
+        await settle(pilot, 15)
+
+        assert "TextScreen" in type(tui.screen).__name__
+        assert len(tui.query("#conversation Static")) == before
+
+
+def test_help_lists_every_key_and_command() -> None:
+    from localai.ui.commands import COMMANDS
+
+    message = COMMANDS.dispatch(None, "/help").message
+    for key in ("Enter", "Shift+Enter", "Ctrl+C", "Ctrl+Q", "Ctrl+M", "Ctrl+O", "F1"):
+        assert key in message, f"/help does not mention {key}"
+    for command in COMMANDS.all():
+        assert f"/{command.name}" in message
+
+
+# --- quitting ----------------------------------------------------------------
+
+
+async def test_single_ctrl_c_warns_but_does_not_exit(tui: LocalAIApp) -> None:
+    """One stray Ctrl+C while reading output must not end the session."""
+    async with tui.run_test() as pilot:
+        await settle(pilot, 8)
+        await pilot.press("ctrl+c")
+        await settle(pilot, 5)
+
+        assert tui.is_running
+        assert "again" in str(tui.statusbar.content).lower()
+
+
+async def test_ctrl_c_twice_exits(tui: LocalAIApp) -> None:
+    async with tui.run_test() as pilot:
+        await settle(pilot, 8)
+        await pilot.press("ctrl+c")
+        await settle(pilot, 3)
+        await pilot.press("ctrl+c")
+        await settle(pilot, 5)
+        assert not tui.is_running
+
+
+async def test_ctrl_c_disarms_after_the_window(tui: LocalAIApp) -> None:
+    """A press now and another a minute later is not a double-tap."""
+    async with tui.run_test() as pilot:
+        await settle(pilot, 8)
+        await pilot.press("ctrl+c")
+        await settle(pilot, 3)
+        tui._quit_armed_at -= 10.0  # simulate the window expiring
+        await pilot.press("ctrl+c")
+        await settle(pilot, 5)
+        assert tui.is_running
+
+
+# --- art ---------------------------------------------------------------------
+
+
+def test_sigils_are_solid_blocks_not_line_drawing() -> None:
+    """Thin diagonals read as noise at terminal scale; blocks read as a logo."""
+    blocks = set("█▓▒░▄▀▌▐ ")
+    for identity in art.IDENTITIES:
+        for line in identity.sigil:
+            assert set(line) <= blocks, f"{identity.family} sigil uses non-block glyphs: {line!r}"
+
+
+def test_sigil_lines_are_uniform_width() -> None:
+    """Ragged rows make the mark look broken rather than deliberate."""
+    for identity in (*art.IDENTITIES, art.UNKNOWN):
+        widths = {len(line) for line in identity.sigil}
+        assert len(widths) == 1, f"{identity.family} sigil has ragged rows: {widths}"
+
+
+def test_widgets_declare_no_layout_css_of_their_own() -> None:
+    """Layout lives in theme.tcss, not in widget DEFAULT_CSS.
+
+    Regression: CommandMenu carried ``dock: bottom; layer: menu`` in its DEFAULT_CSS,
+    which silently removed it from its container's vertical flow so it rendered on
+    top of the prompt. Keeping every layout rule in one stylesheet means the whole
+    arrangement can be reasoned about in one place.
+    """
+    from localai.ui.widgets import CommandMenu, ThinkingIndicator
+
+    for widget in (CommandMenu, ThinkingIndicator):
+        css = getattr(widget, "DEFAULT_CSS", "") or ""
+        for banned in ("dock:", "layer:"):
+            assert banned not in css, f"{widget.__name__} sets {banned} in DEFAULT_CSS"
+
+
+# --- switching models --------------------------------------------------------
+
+
+async def test_switching_models_clears_the_transcript(
+    tui: LocalAIApp, provider: MockProvider
+) -> None:
+    """A second sigil stacked under the old conversation reads as clutter."""
+    provider.queue_text("first answer")
+    async with tui.run_test() as pilot:
+        await settle(pilot, 8)
+        tui.query_one("#prompt", PromptArea).text = "hello"
+        await pilot.press("enter")
+        await settle(pilot, 30)
+        assert "hello" in rendered(tui)
+
+        await tui._switch_model("mock-plain:3b")
+        await settle(pilot, 15)
+
+        text = rendered(tui)
+        assert "hello" not in text, "the previous conversation is still on screen"
+        assert "mock-plain:3b" in text
+
+
+async def test_only_one_sigil_is_ever_on_screen(tui: LocalAIApp, provider: MockProvider) -> None:
+    async with tui.run_test() as pilot:
+        await settle(pilot, 8)
+        for name in ("mock-plain:3b", "mock-vision:7b", "mock-tools:8b"):
+            await tui._switch_model(name)
+            await settle(pilot, 10)
+
+        sigils = [w for w in tui.query("#conversation Static") if "sigil" in w.classes]
+        assert len(sigils) == 1, f"{len(sigils)} sigils on screen; expected exactly one"
+
+
+@pytest.mark.security
+async def test_switching_models_says_the_context_is_kept(
+    tui: LocalAIApp, provider: MockProvider
+) -> None:
+    """Clearing the view must not imply the conversation was reset.
+
+    The new model still receives everything said so far. Wiping the screen silently
+    would suggest a fresh start that has not happened.
+    """
+    provider.queue_text("an answer")
+    async with tui.run_test() as pilot:
+        await settle(pilot, 8)
+        tui.query_one("#prompt", PromptArea).text = "remember this"
+        await pilot.press("enter")
+        await settle(pilot, 30)
+        carried = len(tui.state.messages)
+        assert carried > 0
+
+        await tui._switch_model("mock-plain:3b")
+        await settle(pilot, 15)
+
+        text = rendered(tui)
+        assert "still in context" in text, "the user is not told the context was kept"
+        assert "/new" in text, "no route to an actual fresh start is offered"
+        # The context itself is untouched.
+        assert len(tui.state.messages) == carried
+
+
+async def test_no_context_note_when_there_is_nothing_to_carry(tui: LocalAIApp) -> None:
+    """A note about carrying zero messages would be noise."""
+    async with tui.run_test() as pilot:
+        await settle(pilot, 8)
+        await tui._switch_model("mock-plain:3b")
+        await settle(pilot, 12)
+        assert "still in context" not in rendered(tui)
+
+
+async def test_resuming_a_conversation_does_not_wipe_the_history_it_just_drew(
+    app: Application, provider: MockProvider
+) -> None:
+    """Resume renders the transcript, then switches model. Order matters."""
+    record = app.conversations.create(title="Earlier", model="mock-plain:3b")
+    app.conversations.add_message(
+        record.id, Message(role=Role.USER, content="a question from before")
+    )
+
+    tui_app = LocalAIApp(app, initial_model="mock-tools:8b")
+    async with tui_app.run_test() as pilot:
+        await settle(pilot, 8)
+        tui_app._resume_conversation(record.id)
+        await settle(pilot, 30)
+
+        text = rendered(tui_app)
+        assert "a question from before" in text, "resume erased the history it rendered"
+        assert tui_app.state.model == "mock-plain:3b"

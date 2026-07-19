@@ -332,7 +332,7 @@ class UsageStore:
     def report(
         self, period: Period = Period.ALL, *, assumed_watts: float | None = None
     ) -> dict[str, Any]:
-        """The full report rendered by ``localai usage report --json``."""
+        """The full report rendered by ``ai usage report --json``."""
         totals = self.totals(period)
         return {
             "schema": "localai.usage-report/1",

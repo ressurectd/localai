@@ -238,7 +238,7 @@ class ToolRunner:
         *,
         caller: Caller | None = None,
     ) -> tuple[Decision, str]:
-        """Evaluate without executing. Powers ``localai permissions explain``.
+        """Evaluate without executing. Powers ``ai permissions explain``.
 
         Sharing the request-construction path with :meth:`execute` is deliberate:
         an explanation that used different logic from enforcement would be worse

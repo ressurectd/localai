@@ -20,7 +20,17 @@ each public interface separately — see [docs/release-process.md](docs/release-
 - `ai` launcher alongside `localai`.
 - Window title is now `ai`.
 
+- Switching models clears the transcript, so only the new model's mark is on screen.
+  The carried message count is stated explicitly and `/new` is offered, because
+  clearing the view does not clear the context and implying otherwise would mislead.
+
 ### Fixed
+- **The thinking indicator was rendered underneath the input box.** It was active,
+  sized and repainting every frame, and entirely covered. Independent `dock: bottom`
+  widgets stack in an order Textual chooses; an auto-height parent never recomputes
+  when a child's height changes; and `CommandMenu.DEFAULT_CSS` still carried
+  `dock: bottom; layer: menu`, which removed it from its container's flow. Every
+  height below the transcript is now assigned explicitly in `_relayout()`.
 - **Critical: the permission confirmation dialog crashed.** `push_screen_wait`
   requires a Textual worker context; it was called from ordinary async methods, so
   every tool call needing confirmation failed with `NoActiveWorker` instead of asking

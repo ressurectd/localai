@@ -86,3 +86,6 @@ bin/localai.ps1
 
 # --- Claude Local Instructions ---
 CLAUDE.md
+# --- release artefacts ---
+# dist/ and build/ are already covered by the Python section above.
+*.spec.bak

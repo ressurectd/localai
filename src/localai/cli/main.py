@@ -1359,7 +1359,7 @@ def main(argv: list[str] | None = None) -> int:
         print(style("\ninterrupted", "yellow", enabled=mode.color), file=sys.stderr)
         return 130
     except BrokenPipeError:
-        # `localai models list | head` closes the pipe early; that is not an error.
+        # `ai models list | head` closes the pipe early; that is not an error.
         return 0
 
 

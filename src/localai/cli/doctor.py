@@ -1,6 +1,6 @@
 """Environment diagnostics.
 
-``localai doctor`` is the first thing a user runs when something is wrong and the
+``ai doctor`` is the first thing a user runs when something is wrong and the
 first thing an AI coding agent should run before making changes. Every check reports
 ``ok``/``warn``/``fail`` plus a remediation string, so the output is actionable
 rather than merely descriptive.
@@ -132,7 +132,7 @@ async def _models_check(app: Application) -> Check:
             {"count": 0},
         )
 
-    # Classify via the same code `localai providers scan` uses, so the two commands
+    # Classify via the same code `ai providers scan` uses, so the two commands
     # cannot disagree about which models are actually usable as agents.
     from localai.providers.discovery import classify_model
 
@@ -185,7 +185,7 @@ def _database_check(app: Application) -> Check:
             "database",
             "warn",
             f"{len(status_info['pending'])} migration(s) pending",
-            "Run: localai migrate",
+            "Run: ai migrate",
             status_info,
         )
     return Check(
@@ -203,7 +203,7 @@ def _config_check(app: Application) -> Check:
             "config",
             "warn",
             "no config file; using defaults",
-            "Create one with: localai config init",
+            "Create one with: ai config init",
             {"path": str(app.paths.config_file)},
         )
     return Check(
@@ -243,7 +243,7 @@ def _permissions_check(app: Application) -> Check:
         "permissions",
         status,
         f"mode={perms.mode.value}" + ("; " + "; ".join(notes) if notes else ""),
-        "Review with: localai permissions show" if status != "ok" else "",
+        "Review with: ai permissions show" if status != "ok" else "",
         {
             "mode": perms.mode.value,
             "kill_switch": perms.kill_switch,
@@ -366,7 +366,7 @@ def _env_check(app: Application) -> Check:
 
 
 def summarise(checks: list[Check]) -> dict[str, Any]:
-    """Build the JSON document for ``localai doctor --json``."""
+    """Build the JSON document for ``ai doctor --json``."""
     counts = {
         status: sum(1 for c in checks if c.status == status) for status in ("ok", "warn", "fail")
     }

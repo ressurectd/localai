@@ -251,7 +251,7 @@ class Database:
         }
 
     def health(self) -> dict[str, Any]:
-        """Integrity check plus size, for ``localai doctor``."""
+        """Integrity check plus size, for ``ai doctor``."""
         try:
             integrity = self.connection.execute("PRAGMA integrity_check").fetchone()[0]
             page_count = self.connection.execute("PRAGMA page_count").fetchone()[0]

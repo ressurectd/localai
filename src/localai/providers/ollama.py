@@ -291,7 +291,7 @@ class OllamaProvider:
             f"cannot reach Ollama at {self.config.base_url}: {exc}",
             remediation=(
                 "Start Ollama ('ollama serve', or launch the desktop app), then retry. "
-                "Verify the host and port with: localai doctor"
+                "Verify the host and port with: ai doctor"
             ),
             base_url=self.config.base_url,
         )
