@@ -16,6 +16,9 @@ each public interface separately — see [docs/release-process.md](docs/release-
   - `system_info` reports memory on Linux and macOS.
   - `doctor` reports the POSIX shell, and treats a missing `pwsh` as optional off
     Windows.
+  - `install.sh` and `uninstall.sh`, the Linux counterparts of `install.ps1` and
+    `uninstall.ps1`. POSIX `sh`, no root, launchers as marked wrapper scripts in
+    `~/.local/bin` that never replace another program's `ai` command.
   - Unix destructive-command patterns (`rm -r`, `mkfs`, `dd of=/dev/...`, `sudo`,
     `chmod -R`, `git push --force`, ...) and network patterns (`ssh`, `git clone`,
     `pip install`, package managers) in `classify_command`.
@@ -45,6 +48,8 @@ each public interface separately — see [docs/release-process.md](docs/release-
 - Shell commands now run in their own process group on POSIX. A backgrounded child
   (`sleep 600 &`) could previously hold the output pipe open and hang the tool past
   its timeout; the whole group is now signalled on timeout or cancel.
+- `bin/ai` and `bin/localai` were committed without the executable bit, so they
+  could not be run directly from a Linux checkout.
 - `doctor` suggested `ai config init`; it now names `localai`, which every install
   provides (a plain `pip install` does not create the `ai` launcher).
 - mypy failed on non-Windows hosts (`ctypes.windll`); platform checks now narrow

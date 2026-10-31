@@ -48,6 +48,10 @@ Platform-specific code, all selected by `sys.platform` so mypy narrows it:
 - `tools/system.py` — processes via `tasklist`, `/proc` or `ps`; memory via
   `GlobalMemoryStatusEx`, `/proc/meminfo` or `sysconf`.
 
+Linux installs with `install.sh` / `uninstall.sh` (POSIX sh, checked with
+`shellcheck -s sh`). Keep them in step with `install.ps1` / `uninstall.ps1`: same
+steps, same data-safety behaviour.
+
 When touching any of these, run `mypy --platform win32 src` as well as the native
 check: the gate only type-checks the host platform.
 

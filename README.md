@@ -134,11 +134,12 @@ Full guide: [docs/installation.md](docs/installation.md).
 
 ```bash
 git clone <repo> localai && cd localai
-python3 tasks.py setup
-.venv/bin/localai
+./install.sh
+ai
 ```
 
-Deletes go to the freedesktop.org Trash, and the model gets `run_shell` (bash)
+Needs Python 3.11+, no root. The same checks and launchers as `install.ps1`, with
+launchers placed in `~/.local/bin`. Deletes go to the freedesktop.org Trash, and the model gets `run_shell` (bash)
 alongside `run_python`. See [docs/installation.md](docs/installation.md#linux).
 
 </details>
