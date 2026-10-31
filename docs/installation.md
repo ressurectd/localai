@@ -2,11 +2,29 @@
 
 ## Requirements
 
-- **Windows 10/11** (primary target; the core runs elsewhere, but `list_processes` and
-  Recycle Bin deletion are Windows-only)
+- **Windows 10/11** (primary target) or **Linux**. Every tool works on Linux: deletes
+  go to the freedesktop.org Trash, `run_shell` replaces PowerShell (which remains
+  available if `pwsh` is installed), and `list_processes` reads `/proc`. On macOS the
+  core works, but deletion requires `permanent=true`.
 - **Python 3.11+**
 - **Ollama** with at least one model
 - Windows Terminal recommended; classic PowerShell and cmd work
+
+## Linux
+
+The Windows installer and `install.ps1` are Windows-only. On Linux, install from source:
+
+```bash
+git clone <repo> localai && cd localai
+python3 tasks.py setup            # creates .venv and installs localai with dev tools
+.venv/bin/localai doctor          # confirm Ollama, the database and the shell are found
+.venv/bin/localai                 # launch the TUI
+```
+
+Or, without the dev tools: `python3 -m pip install --user .` and then run `localai`.
+Configuration and data live in `$LOCALAI_HOME`, else `$XDG_DATA_HOME/localai`
+(normally `~/.local/share/localai`). Deleted files go to `~/.local/share/Trash`, where
+your file manager or `gio trash --list` can restore them.
 
 ## Quick install — the installer
 

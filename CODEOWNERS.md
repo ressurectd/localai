@@ -16,7 +16,7 @@ explicit note in the commit message describing the security impact.
 | Path safety | `src/localai/safety/pathsafe.py` | Workspace containment, junction and symlink escapes, reserved device names, long paths. |
 | Credential detection | `src/localai/safety/sensitive.py` | Decides what forces a confirmation. Gaps here mean silent access to secrets. |
 | Injection detection | `src/localai/safety/injection.py` | Framing and detection for untrusted file content. |
-| Deletion | `src/localai/safety/recycle.py` | Win32 `SHFileOperationW`. A buffer mistake here is a native-code bug. |
+| Deletion | `src/localai/safety/recycle.py` | Win32 `SHFileOperationW` (a buffer mistake here is a native-code bug) and the freedesktop.org Trash (a race or symlink mistake here loses or misplaces data). |
 | Backups | `src/localai/safety/backup.py` | The reversibility guarantee. |
 | Tool execution | `src/localai/tools/runner.py` | The single execution path. Enforces policy, timeout, truncation, audit. |
 | Shell execution | `src/localai/tools/shell.py` | Runs commands. Command classification drives risk escalation. |

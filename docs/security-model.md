@@ -14,7 +14,7 @@ Local models are small and make mistakes. Defences, in order of strength:
 
 1. **Permissions engine** — the real guarantee. Consequential actions require
    confirmation unless you configured otherwise. See `permissions-engine.md`.
-2. **Reversibility** — deletes go to the Recycle Bin; edits are backed up first; diffs
+2. **Reversibility** — deletes go to the Recycle Bin (the Trash on Linux); edits are backed up first; diffs
    are shown; dry-run simulates.
 3. **Bounds** — timeouts, output caps, scan depth and entry limits, a tool-iteration
    cap, a repeated-call detector and a wall-clock budget per turn.
@@ -108,6 +108,11 @@ Runtime dependencies are deliberately few: `httpx`, `textual`, `rich`, `pydantic
 Recycle Bin deletion is implemented with `ctypes` against `SHFileOperationW` rather
 than adding `send2trash`. The call is about forty lines with no transitive
 dependencies, and it keeps a security-relevant behaviour inside code reviewed here.
+On Linux, `safety/recycle.py` implements the freedesktop.org Trash specification
+directly for the same reason: the `.trashinfo` file is created with `O_EXCL` before
+the item is moved (so concurrent deletes cannot collide), the move is an atomic
+`rename` that never falls back to copy-then-delete, a symlink is trashed as itself,
+and a shared `$topdir/.Trash` is used only if it is a real sticky directory.
 
 New dependencies with security, privacy or maintenance implications must be raised
 before being added.

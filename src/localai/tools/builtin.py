@@ -50,6 +50,7 @@ def register_builtins(
         registry.register(fs_write.CopyPath())
         registry.register(fs_write.DeletePath())
         registry.register(shell.RunPowerShell())
+        registry.register(shell.RunShell())
         registry.register(shell.RunPython())
 
     return registry
@@ -76,6 +77,7 @@ BUILTIN_TOOL_NAMES: tuple[str, ...] = (
     "copy_path",
     "delete_path",
     "run_powershell",
+    "run_shell",
     "run_python",
 )
 

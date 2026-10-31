@@ -6,6 +6,19 @@ each public interface separately — see [docs/release-process.md](docs/release-
 ## [Unreleased]
 
 ### Added
+- **Linux support.** Every tool now works on Linux, and the test suite and the
+  `check` gate (lint, format, mypy) pass there.
+  - `delete_path` sends items to the freedesktop.org Trash (`~/.local/share/Trash`, or
+    `$topdir/.Trash-$uid` on other filesystems), restorable from any file manager.
+  - New `run_shell` tool: bash (or sh) with `--noprofile --norc` and `BASH_ENV`/`ENV`
+    stripped. Same risk, confirmation and output bounds as `run_powershell`.
+  - `list_processes` reads `/proc` on Linux and uses `ps` on macOS.
+  - `system_info` reports memory on Linux and macOS.
+  - `doctor` reports the POSIX shell, and treats a missing `pwsh` as optional off
+    Windows.
+  - Unix destructive-command patterns (`rm -r`, `mkfs`, `dd of=/dev/...`, `sudo`,
+    `chmod -R`, `git push --force`, ...) and network patterns (`ssh`, `git clone`,
+    `pip install`, package managers) in `classify_command`.
 - Slash-command menu: press `/` and a filtered list rises above the prompt.
   Arrow keys navigate, Tab completes, Enter runs, Esc dismisses.
 - Thinking indicator showing a pulse, an elapsed timer and a rolling caption of the
@@ -25,6 +38,17 @@ each public interface separately — see [docs/release-process.md](docs/release-
   clearing the view does not clear the context and implying otherwise would mislead.
 
 ### Fixed
+- **Security: on Linux and macOS no path was classified as a system directory.** The
+  list was built only from Windows environment variables, so a write to `/etc`, `/usr`
+  or `/boot` did not trigger the system-directory confirmation. Unix system locations
+  are now listed (`safety/sensitive.py`), with boundary tests.
+- Shell commands now run in their own process group on POSIX. A backgrounded child
+  (`sleep 600 &`) could previously hold the output pipe open and hang the tool past
+  its timeout; the whole group is now signalled on timeout or cancel.
+- `doctor` suggested `ai config init`; it now names `localai`, which every install
+  provides (a plain `pip install` does not create the `ai` launcher).
+- mypy failed on non-Windows hosts (`ctypes.windll`); platform checks now narrow
+  correctly for win32, linux and darwin.
 - **The thinking indicator was rendered underneath the input box.** It was active,
   sized and repainting every frame, and entirely covered. Independent `dock: bottom`
   widgets stack in an order Textual chooses; an auto-height parent never recomputes

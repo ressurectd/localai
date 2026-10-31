@@ -73,8 +73,8 @@ That is what this is.
 restarting, and shows what each one can actually do — `ai providers scan` reports
 which models support native tool calling and which fall back to a text protocol.
 
-**Gives the model real tools.** Nineteen of them: read and search files, inspect
-metadata, hash, find duplicates, write, edit, move, delete, run PowerShell and Python,
+**Gives the model real tools.** Twenty of them: read and search files, inspect
+metadata, hash, find duplicates, write, edit, move, delete, run PowerShell, bash and Python,
 inspect the system and Git.
 
 **Asks before it acts.** Four permission modes, from confirming everything to full
@@ -124,6 +124,22 @@ cd localai
 Needs Python 3.11+. Creates an isolated virtualenv, writes `ai` and `localai`
 launchers, optionally adds them to your PATH, and finishes by running diagnostics.
 Full guide: [docs/installation.md](docs/installation.md).
+
+</details>
+
+<details>
+<summary><b>Linux</b></summary>
+
+<br>
+
+```bash
+git clone <repo> localai && cd localai
+python3 tasks.py setup
+.venv/bin/localai
+```
+
+Deletes go to the freedesktop.org Trash, and the model gets `run_shell` (bash)
+alongside `run_python`. See [docs/installation.md](docs/installation.md#linux).
 
 </details>
 
@@ -317,7 +333,7 @@ need to scrape the terminal UI or guess how to build anything.
 - Model detection, switching, provider discovery
 - Streaming chat with live reasoning display
 - Terminal UI: command menu, pickers, 14 themes
-- 19 tools behind one execution path
+- 20 tools behind one execution path
 - Permissions engine, 4 modes, audit log
 - Conversation storage, fork, export, search
 - Usage tracking with honest provenance
@@ -353,7 +369,7 @@ See [.project/status.json](.project/status.json) for the machine-readable versio
 - `/compact` truncates deterministically rather than summarising with the model.
   Deliberate for now: a mechanical drop is predictable, whereas a generated summary
   can quietly invent things you said.
-- `list_processes` and Recycle Bin deletion are Windows-only.
+- On macOS, deletion requires `permanent=true` (there is no Trash support yet).
 - Prompt-injection detection is heuristic; the guarantee is the permissions engine.
 
 ## Contributing
@@ -373,8 +389,8 @@ boundary test fails, **the test is right**.
 [pydantic](https://docs.pydantic.dev/) · [Rich](https://rich.readthedocs.io/) ·
 [Ollama](https://ollama.com)
 
-Five runtime dependencies, all widely used and actively maintained. Recycle Bin
-deletion is forty lines of `ctypes` rather than a sixth — see the
+Five runtime dependencies, all widely used and actively maintained. Recycle Bin and
+Trash deletion are reviewed in-tree code rather than a sixth — see the
 [dependency policy](docs/security-model.md#dependency-policy).
 
 <div align="center">

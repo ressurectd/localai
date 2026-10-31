@@ -3,7 +3,7 @@
 For whoever picks this up next — human or agent. The machine-readable version is
 `.project/status.json`; this is the prose that gives it meaning.
 
-**Last updated:** 2026-07-18 · **Phase 1 complete** · 389 tests passing
+**Last updated:** 2026-10-31 · **Phase 1 complete** · 453 tests passing on Linux (17 Windows-only skipped)
 
 ---
 
@@ -31,6 +31,28 @@ The parts you can rely on:
   first-run model choice all classify through the same `classify_model`, so they
   cannot disagree.
 - **TUI** — driven headlessly in tests, so UI changes are verifiable.
+
+## Platforms
+
+Windows is the primary target and the only platform with an installer. **Linux is fully
+supported** as of 2026-10-31: the suite and the `check` gate (except the gitignored
+`CLAUDE.md` requirement in `validate-docs`) pass there.
+Platform-specific code, all selected by `sys.platform` so mypy narrows it:
+
+- `safety/recycle.py` — Recycle Bin on Windows, freedesktop.org Trash on Linux, none
+  on macOS (deletes there need `permanent=true`).
+- `safety/sensitive.py` — system directories come from environment variables on
+  Windows and from `POSIX_SYSTEM_DIRECTORIES` elsewhere.
+- `tools/shell.py` — `run_powershell` everywhere `pwsh` exists, `run_shell` on POSIX.
+  POSIX commands run in their own process group.
+- `tools/system.py` — processes via `tasklist`, `/proc` or `ps`; memory via
+  `GlobalMemoryStatusEx`, `/proc/meminfo` or `sysconf`.
+
+When touching any of these, run `mypy --platform win32 src` as well as the native
+check: the gate only type-checks the host platform.
+
+Not yet verified against a real Ollama daemon on Linux. Everything up to the HTTP call
+is covered by tests with the mock provider.
 
 ## What to do first
 

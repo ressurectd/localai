@@ -41,6 +41,8 @@ def isolated_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[P
     """
     home = tmp_path / "localai-home"
     monkeypatch.setenv("LOCALAI_HOME", str(home))
+    # Deletes on Linux go to $XDG_DATA_HOME/Trash. Never the user's real Trash.
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "xdg-data"))
     for variable in (
         "LOCALAI_MODEL",
         "LOCALAI_PROFILE",

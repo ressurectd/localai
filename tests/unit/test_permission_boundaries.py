@@ -7,6 +7,7 @@ one of these fails, the failure is the finding.
 
 from __future__ import annotations
 
+import sys
 import time
 from pathlib import Path
 
@@ -26,6 +27,7 @@ from localai.permissions.engine import (
     PermissionEngine,
     PermissionRequest,
 )
+from localai.safety import sensitive
 
 pytestmark = pytest.mark.security
 
@@ -323,6 +325,25 @@ def test_allow_sensitive_rule_permits_it(config: Config, paths: AppPaths) -> Non
     decision = engine.evaluate(request_for("read_file", paths=[Path("C:/Users/x/.ssh/id_rsa")]))
     assert decision.effect is Effect.ALLOW
     assert decision.matched_rule_id == "ssh-audit"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX system layout")
+@pytest.mark.parametrize("target", ["/etc/sudoers", "/usr/bin/ls", "/boot/grub/grub.cfg"])
+def test_posix_system_writes_need_confirmation_despite_a_broad_allow_rule(
+    config: Config, paths: AppPaths, target: str
+) -> None:
+    """A rule allowing writes everywhere must not silently cover the operating system."""
+    config.permissions.rules.append(
+        PermissionRuleModel(id="writes", effect="allow", tools=["write_file"], paths=["**"])
+    )
+    engine = PermissionEngine(config, paths)
+    decision = engine.evaluate(
+        request_for("write_file", risk=RiskLevel.WRITE, mutating=True, paths=[Path(target)])
+    )
+    assert decision.effect is not Effect.ALLOW
+    assert any(
+        m.kind is sensitive.SensitiveKind.SYSTEM_DIRECTORY for m in decision.sensitive_matches
+    )
 
 
 # --- Rules ------------------------------------------------------------------

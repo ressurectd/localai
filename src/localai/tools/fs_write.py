@@ -434,8 +434,9 @@ class CopyPath(Tool):
 class DeletePath(Tool):
     name = "delete_path"
     description = (
-        "Delete a file or directory. By default it goes to the Recycle Bin so it can be "
-        "restored. Permanent deletion requires permanent=true and is not reversible."
+        "Delete a file or directory. By default it goes to the Recycle Bin (the Trash on "
+        "Linux) so it can be restored. Permanent deletion requires permanent=true and is "
+        "not reversible."
     )
     category = "filesystem"
     risk = RiskLevel.DESTRUCTIVE
@@ -447,7 +448,7 @@ class DeletePath(Tool):
             "permanent": {
                 "type": "boolean",
                 "default": False,
-                "description": "Bypass the Recycle Bin. Not reversible.",
+                "description": "Bypass the Recycle Bin or Trash. Not reversible.",
             },
             "recursive": {
                 "type": "boolean",
@@ -462,7 +463,9 @@ class DeletePath(Tool):
         return path_from(arguments, "path")
 
     def describe_call(self, arguments: dict[str, Any]) -> str:
-        method = "PERMANENTLY DELETE" if arguments.get("permanent") else "move to Recycle Bin"
+        method = (
+            "PERMANENTLY DELETE" if arguments.get("permanent") else f"move to {recycle.bin_name()}"
+        )
         scope = " (recursive)" if arguments.get("recursive") else ""
         return f"{method}: {arguments.get('path')}{scope}"
 
@@ -496,7 +499,7 @@ class DeletePath(Tool):
         use_bin = context.config.safety.use_recycle_bin and not permanent
 
         if context.dry_run:
-            method = "move to the Recycle Bin" if use_bin else "permanently delete"
+            method = f"move to the {recycle.bin_name()}" if use_bin else "permanently delete"
             return ToolResult(content=f"[dry run] would {method} {path}", flags=["dry_run"])
 
         backup = None
@@ -507,16 +510,18 @@ class DeletePath(Tool):
             outcome = await asyncio.to_thread(recycle.recycle, path)
             if outcome.ok:
                 return ToolResult(
-                    content=f"Moved {path} to the Recycle Bin. It can be restored from there.",
+                    content=(
+                        f"Moved {path} to the {recycle.bin_name()}. It can be restored from there."
+                    ),
                     metadata={"path": str(path), "method": "recycle_bin"},
                 )
             if not recycle.available():
                 return ToolResult.failure(
-                    f"the Recycle Bin is unavailable on this platform ({outcome.detail}). "
+                    f"reversible deletion is unavailable on this platform ({outcome.detail}). "
                     "Set permanent=true to delete irreversibly, if that is what you intend."
                 )
             return ToolResult.failure(
-                f"could not move {path} to the Recycle Bin: {outcome.detail}. "
+                f"could not move {path} to the {recycle.bin_name()}: {outcome.detail}. "
                 "Set permanent=true to delete irreversibly, if that is what you intend."
             )
 

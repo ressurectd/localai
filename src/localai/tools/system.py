@@ -29,6 +29,69 @@ def _humanise(size: float) -> str:
     return f"{size:.1f} TB"
 
 
+def _posix_memory() -> dict[str, Any]:
+    """Physical memory on Linux (``/proc/meminfo``) or other Unix (``sysconf``)."""
+    total = available = None
+    try:
+        fields: dict[str, int] = {}
+        for line in Path("/proc/meminfo").read_text(encoding="ascii").splitlines():
+            key, _, value = line.partition(":")
+            parts = value.split()
+            if parts and parts[0].isdigit():
+                fields[key] = int(parts[0]) * 1024  # reported in kB
+        total = fields.get("MemTotal")
+        available = fields.get("MemAvailable", fields.get("MemFree"))
+    except OSError:
+        if sys.platform != "win32":
+            try:
+                total = os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")
+            except (OSError, ValueError):
+                total = None
+
+    if not total:
+        return {"memory_total": "unavailable"}
+    result: dict[str, Any] = {"memory_total": _humanise(total), "memory_total_bytes": total}
+    if available is not None:
+        result["memory_available"] = _humanise(available)
+        result["memory_available_bytes"] = available
+        result["memory_used_percent"] = round((total - available) / total * 100)
+    return result
+
+
+def _linux_processes() -> list[dict[str, Any]]:
+    """Read processes from ``/proc``. Processes that exit mid-scan are skipped."""
+    processes: list[dict[str, Any]] = []
+    for entry in Path("/proc").iterdir():
+        if not entry.name.isdigit():
+            continue
+        try:
+            name = (entry / "comm").read_text(encoding="utf-8", errors="replace").strip()
+            memory_kb = 0  # kernel threads have no VmRSS line
+            for line in (entry / "status").read_text(encoding="utf-8").splitlines():
+                if line.startswith("VmRSS:"):
+                    memory_kb = int(line.split()[1])
+                    break
+        except (OSError, ValueError, IndexError):
+            continue
+        processes.append({"name": name, "pid": int(entry.name), "memory_kb": memory_kb})
+    return processes
+
+
+def _parse_ps(output: str) -> list[dict[str, Any]]:
+    """Parse ``ps -axo pid=,rss=,comm=`` output."""
+    processes: list[dict[str, Any]] = []
+    for line in output.splitlines():
+        parts = line.split(None, 2)
+        if len(parts) < 3:
+            continue
+        try:
+            pid, memory_kb = int(parts[0]), int(parts[1])
+        except ValueError:
+            continue
+        processes.append({"name": Path(parts[2]).name, "pid": pid, "memory_kb": memory_kb})
+    return processes
+
+
 class SystemInfo(Tool):
     name = "system_info"
     description = (
@@ -86,6 +149,8 @@ class SystemInfo(Tool):
                 details["memory_available_bytes"] = status.ullAvailPhys
             except (OSError, AttributeError):
                 details["memory_total"] = "unavailable"
+        else:
+            details.update(_posix_memory())
 
         body = "\n".join(f"  {k:<20} {v}" for k, v in details.items())
         return ToolResult(content=f"System information:\n{body}", metadata=details)
@@ -189,40 +254,18 @@ class ListProcesses(Tool):
         return f"list processes matching {arguments.get('filter', '(all)')!r}"
 
     async def run(self, arguments: dict[str, Any], context: ToolContext) -> ToolResult:
-        if sys.platform != "win32":
-            return ToolResult.failure("list_processes currently supports Windows only")
-
-        # tasklist with CSV output is parsed structurally rather than by scraping a
-        # fixed-width table, which breaks on long process names and localised headers.
-        from localai.tools.shell import _stream_process
-
-        code, output, _, timed_out = await _stream_process(
-            ["tasklist", "/FO", "CSV", "/NH"],
-            cwd=context.cwd,
-            timeout=20.0,
-            max_bytes=2_000_000,
-            cancel=context.cancel,
-        )
-        if timed_out or code != 0:
-            return ToolResult.failure(f"tasklist failed: {output[:300]}")
-
-        import csv
-        import io
+        found: list[dict[str, Any]] | ToolResult
+        if sys.platform == "win32":
+            found = await self._windows_processes(context)
+        elif Path("/proc/self/status").exists():
+            found = await asyncio.to_thread(_linux_processes)
+        else:
+            found = await self._ps_processes(context)
+        if isinstance(found, ToolResult):
+            return found
 
         needle = str(arguments.get("filter", "")).lower()
-        processes: list[dict[str, Any]] = []
-        for row in csv.reader(io.StringIO(output)):
-            if len(row) < 5:
-                continue
-            name, pid_text, _, _, memory_text = row[:5]
-            if needle and needle not in name.lower():
-                continue
-            try:
-                pid = int(pid_text)
-                memory_kb = int(memory_text.replace(",", "").replace(".", "").split()[0])
-            except (ValueError, IndexError):
-                continue
-            processes.append({"name": name, "pid": pid, "memory_kb": memory_kb})
+        processes = [p for p in found if not needle or needle in p["name"].lower()]
 
         key = {
             "memory": lambda p: -p["memory_kb"],
@@ -244,6 +287,54 @@ class ListProcesses(Tool):
             untrusted=True,
             metadata={"total": len(processes), "returned": len(limited), "processes": limited},
         )
+
+    @staticmethod
+    async def _windows_processes(context: ToolContext) -> list[dict[str, Any]] | ToolResult:
+        # tasklist with CSV output is parsed structurally rather than by scraping a
+        # fixed-width table, which breaks on long process names and localised headers.
+        from localai.tools.shell import _stream_process
+
+        code, output, _, timed_out = await _stream_process(
+            ["tasklist", "/FO", "CSV", "/NH"],
+            cwd=context.cwd,
+            timeout=20.0,
+            max_bytes=2_000_000,
+            cancel=context.cancel,
+        )
+        if timed_out or code != 0:
+            return ToolResult.failure(f"tasklist failed: {output[:300]}")
+
+        import csv
+        import io
+
+        processes: list[dict[str, Any]] = []
+        for row in csv.reader(io.StringIO(output)):
+            if len(row) < 5:
+                continue
+            name, pid_text, _, _, memory_text = row[:5]
+            try:
+                pid = int(pid_text)
+                memory_kb = int(memory_text.replace(",", "").replace(".", "").split()[0])
+            except (ValueError, IndexError):
+                continue
+            processes.append({"name": name, "pid": pid, "memory_kb": memory_kb})
+        return processes
+
+    @staticmethod
+    async def _ps_processes(context: ToolContext) -> list[dict[str, Any]] | ToolResult:
+        """macOS and BSD, which have no /proc. A fixed argv: nothing is interpolated."""
+        from localai.tools.shell import _stream_process
+
+        code, output, _, timed_out = await _stream_process(
+            ["ps", "-axo", "pid=,rss=,comm="],
+            cwd=context.cwd,
+            timeout=20.0,
+            max_bytes=2_000_000,
+            cancel=context.cancel,
+        )
+        if timed_out or code != 0:
+            return ToolResult.failure(f"ps failed: {output[:300]}")
+        return _parse_ps(output)
 
 
 class GitCommand(Tool):

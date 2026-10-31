@@ -249,7 +249,8 @@ it is assumed system draw multiplied by generation time, not a measurement.
 
 Always on:
 
-- Deletions go to the **Recycle Bin** unless you explicitly request permanent.
+- Deletions go to the **Recycle Bin** (on Linux, the **Trash** at
+  `~/.local/share/Trash`) unless you explicitly request permanent.
 - Files are **backed up** before being modified — see `%LOCALAPPDATA%\localai\backups`.
 - Edits show a **diff**.
 - Every action is written to an **audit log** you can read with `/logs`.
