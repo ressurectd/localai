@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 import pytest
 
-from localai.config.models import Config
+from localai.config.models import Config, RiskLevel
 from localai.errors import ToolNotFoundError, ToolValidationError
 from localai.tools.base import ToolContext
 from localai.tools.builtin import BUILTIN_TOOL_NAMES, register_builtins
@@ -433,3 +434,172 @@ def test_ollama_schemas_have_the_expected_shape(registry: ToolRegistry) -> None:
         assert schema["function"]["name"]
         assert schema["function"]["description"]
         assert schema["function"]["parameters"]["type"] == "object"
+
+
+# --- POSIX shell, processes and memory (Linux and macOS) ---------------------
+
+posix_only = pytest.mark.skipif(sys.platform == "win32", reason="POSIX only")
+
+
+@posix_only
+async def test_run_shell_runs_bash_in_the_working_directory(
+    registry: ToolRegistry, context: ToolContext, workspace: Path
+) -> None:
+    result = await registry.get("run_shell").run({"command": "pwd; echo hi >&2; exit 3"}, context)
+    assert not result.ok
+    assert result.metadata["exit_code"] == 3
+    assert str(workspace) in result.content
+    assert "hi" in result.content  # stderr is merged
+    assert result.untrusted
+
+
+@posix_only
+async def test_run_shell_ignores_bash_env(
+    registry: ToolRegistry,
+    context: ToolContext,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """$BASH_ENV is sourced by non-interactive bash and could redefine approved commands."""
+    hijack = tmp_path / "hijack.sh"
+    hijack.write_text("echo() { builtin echo HIJACKED; }\n", encoding="utf-8")
+    monkeypatch.setenv("BASH_ENV", str(hijack))
+    monkeypatch.setenv("ENV", str(hijack))
+    result = await registry.get("run_shell").run({"command": "echo safe"}, context)
+    assert result.ok
+    assert "HIJACKED" not in result.content
+    assert "safe" in result.content
+
+
+@posix_only
+async def test_run_shell_timeout_kills_background_children(
+    registry: ToolRegistry, context: ToolContext
+) -> None:
+    """A child holding the output pipe open must not hang the tool past its timeout."""
+    import time
+
+    started = time.monotonic()
+    result = await registry.get("run_shell").run(
+        {"command": "sleep 60 & sleep 60", "timeout_seconds": 1}, context
+    )
+    assert not result.ok
+    assert "timeout" in result.flags
+    assert time.monotonic() - started < 15
+
+
+@posix_only
+async def test_run_shell_returns_when_a_background_child_outlives_it(
+    registry: ToolRegistry, context: ToolContext
+) -> None:
+    import time
+
+    started = time.monotonic()
+    result = await registry.get("run_shell").run({"command": "sleep 60 & echo done"}, context)
+    assert result.ok
+    assert "done" in result.content
+    assert time.monotonic() - started < 15
+
+
+async def test_run_shell_dry_run_executes_nothing(
+    registry: ToolRegistry, context: ToolContext, workspace: Path
+) -> None:
+    context.dry_run = True
+    result = await registry.get("run_shell").run({"command": "touch created.txt"}, context)
+    if sys.platform != "win32":
+        assert "dry_run" in result.flags
+    assert not (workspace / "created.txt").exists()
+
+
+def test_run_shell_confirmation_shows_the_command_verbatim(registry: ToolRegistry) -> None:
+    described = registry.get("run_shell").describe_call({"command": "rm -rf build/"})
+    assert described.startswith("shell: rm -rf build/")
+    assert "DESTRUCTIVE" in described
+
+
+def test_run_shell_is_not_in_the_read_only_registry() -> None:
+    assert "run_shell" not in register_builtins(include_mutating=False)
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "rm -rf /",
+        "rm -r -f build",
+        "rm --recursive old",
+        "sudo apt-get remove nginx",
+        "dd if=/dev/zero of=/dev/sda bs=1M",
+        "mkfs.ext4 /dev/sdb1",
+        "chmod -R 777 /srv",
+        "kill -9 1234",
+        "systemctl reboot",
+        "git push --force origin main",
+        "crontab -r",
+    ],
+)
+def test_posix_destructive_commands_are_flagged(command: str) -> None:
+    from localai.tools.shell import classify_command
+
+    risk, reasons, _ = classify_command(command)
+    assert risk is RiskLevel.DESTRUCTIVE, command
+    assert reasons
+
+
+@pytest.mark.parametrize(
+    "command",
+    ["ls -la", "rm notes.txt", "rm -f old.log", "chmod -r file.txt", "git push origin main"],
+)
+def test_ordinary_posix_commands_are_not_flagged_destructive(command: str) -> None:
+    from localai.tools.shell import classify_command
+
+    risk, _, _ = classify_command(command)
+    assert risk is RiskLevel.EXECUTE, command
+
+
+@pytest.mark.parametrize(
+    "command",
+    ["ssh host uptime", "git clone https://x/y", "pip install requests", "apt-get install jq"],
+)
+def test_posix_network_commands_are_flagged(command: str) -> None:
+    from localai.tools.shell import classify_command
+
+    assert classify_command(command)[2], command
+
+
+@posix_only
+async def test_list_processes_finds_this_process(
+    registry: ToolRegistry, context: ToolContext
+) -> None:
+    import os
+
+    result = await registry.get("list_processes").run({"sort_by": "pid", "limit": 500}, context)
+    assert result.ok, result.error
+    assert result.metadata["total"] > 0
+    pids = {p["pid"] for p in result.metadata["processes"]}
+    assert os.getpid() in pids or result.metadata["total"] > 500
+
+
+@posix_only
+async def test_list_processes_filters_by_name(registry: ToolRegistry, context: ToolContext) -> None:
+    result = await registry.get("list_processes").run({"filter": "python"}, context)
+    assert result.ok
+    assert result.metadata["total"] >= 1
+    assert all("python" in p["name"].lower() for p in result.metadata["processes"])
+
+
+def test_ps_output_is_parsed_structurally() -> None:
+    from localai.tools.system import _parse_ps
+
+    parsed = _parse_ps("  1  4096 /sbin/launchd\n 512 20480 /Applications/My App.app/x\nbad\n")
+    assert parsed == [
+        {"name": "launchd", "pid": 1, "memory_kb": 4096},
+        {"name": "x", "pid": 512, "memory_kb": 20480},
+    ]
+
+
+@posix_only
+async def test_system_info_reports_memory_on_posix(
+    registry: ToolRegistry, context: ToolContext
+) -> None:
+    result = await registry.get("system_info").run({}, context)
+    assert result.metadata["memory_total"] != "unavailable"
+    assert result.metadata["memory_total_bytes"] > 0

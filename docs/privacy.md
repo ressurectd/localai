@@ -86,5 +86,5 @@ never included automatically in anything.
 
 ## If you delete localai
 
-`uninstall.ps1` removes the program and **keeps your data** unless you explicitly ask
+`uninstall.ps1` (`uninstall.sh` on Linux) removes the program and **keeps your data** unless you explicitly ask
 otherwise. Your Ollama models are never touched.

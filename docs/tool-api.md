@@ -18,15 +18,16 @@ A tool is a capability the model can invoke. This document is the contract.
 | `find_duplicates` | filesystem | read | Duplicate detection by content hash. |
 | `system_info` | system | read | OS, CPU, memory, Python, hostname. |
 | `disk_info` | system | read | Drive capacity and free space. |
-| `list_processes` | system | read | Running processes (Windows only). |
+| `list_processes` | system | read | Running processes (`tasklist` on Windows, `/proc` on Linux, `ps` on macOS). |
 | `git` | system | read | Read-only Git: status, log, diff, branch, show, remote, blame. |
 | `write_file` ! | filesystem | write | Create or replace a file. Backs up, returns a diff. |
 | `edit_file` ! | filesystem | write | Replace exact text. Refuses ambiguous matches. |
 | `create_directory` ! | filesystem | write | Create a directory and parents. |
 | `move_path` ! | filesystem | write | Move or rename. |
 | `copy_path` ! | filesystem | write | Copy a file or tree. |
-| `delete_path` ! | filesystem | **destructive** | Delete, to the Recycle Bin by default. |
-| `run_powershell` ! | shell | **execute** | Run a PowerShell command. |
+| `delete_path` ! | filesystem | **destructive** | Delete, to the Recycle Bin (Windows) or freedesktop.org Trash (Linux) by default. |
+| `run_powershell` ! | shell | **execute** | Run a PowerShell command. Needs `pwsh` off Windows. |
+| `run_shell` ! | shell | **execute** | Run a command with bash (or sh) on Linux and macOS. Unavailable on Windows. |
 | `run_python` ! | shell | **execute** | Run a Python script in a subprocess. |
 
 Machine-readable: `localai tools list --json`. One tool's schema:
@@ -102,6 +103,17 @@ happen — paraphrasing defeats the point of asking.
 ```
 powershell: Remove-Item C:\Temp\old -Recurse -Force  [DESTRUCTIVE: recursive forced delete]
 ```
+
+`run_shell` is the same tool with a different interpreter, and shows the same way:
+
+```
+shell: rm -rf build/  [DESTRUCTIVE: recursive delete]
+```
+
+It runs `bash --noprofile --norc -c <command>` with `BASH_ENV` and `ENV` removed
+from the environment, so no startup file can redefine a command the user approved by
+name. Every command runs in its own process group; a timeout or cancel signals the
+whole group, so a backgrounded child cannot outlive the tool.
 
 ### `run`
 

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import fnmatch
 import os
+import sys
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -104,14 +105,59 @@ _PATTERNS: tuple[tuple[SensitiveKind, str, str], ...] = (
 )
 
 
+#: Operating-system locations on Linux and other Unix-like systems. Deliberately
+#: excludes ``/var`` and ``/tmp`` as a whole: macOS per-user temporary directories live
+#: under ``/var/folders`` (``/private/var/folders``), and flagging every scratch write
+#: would train users to click through the confirmation.
+POSIX_SYSTEM_DIRECTORIES: tuple[str, ...] = (
+    "/bin",
+    "/boot",
+    "/dev",
+    "/etc",
+    "/lib",
+    "/lib32",
+    "/lib64",
+    "/libx32",
+    "/opt",
+    "/proc",
+    "/sbin",
+    "/sys",
+    "/usr",
+    "/var/lib",
+    "/var/log",
+    "/var/spool",
+)
+
+#: Additional macOS system locations. ``/etc`` is a symlink to ``/private/etc`` there,
+#: so the resolved spelling is listed too.
+DARWIN_SYSTEM_DIRECTORIES: tuple[str, ...] = (
+    "/System",
+    "/Library",
+    "/Applications",
+    "/private/etc",
+    "/private/var/db",
+)
+
+
 def _system_directories() -> tuple[Path, ...]:
-    """Directories where mutation is high-consequence. Resolved from the environment."""
+    """Directories where mutation is high-consequence.
+
+    On Windows these are resolved from the environment. On every other platform they
+    are the fixed Unix system locations above -- without them, no path at all would
+    be classified as a system directory and a write to ``/etc`` would look ordinary.
+    """
     roots: list[Path] = []
     for var in ("SystemRoot", "ProgramFiles", "ProgramFiles(x86)", "ProgramData"):
         if value := os.environ.get(var):
             roots.append(Path(value))
-    if not roots and os.name == "nt":
-        roots.append(Path("C:/Windows"))
+    if os.name == "nt":
+        if not roots:
+            roots.append(Path("C:/Windows"))
+        return tuple(roots)
+
+    roots.extend(Path(p) for p in POSIX_SYSTEM_DIRECTORIES)
+    if sys.platform == "darwin":
+        roots.extend(Path(p) for p in DARWIN_SYSTEM_DIRECTORIES)
     return tuple(roots)
 
 

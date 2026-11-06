@@ -239,7 +239,7 @@ changed-security` prints this list for your diff. Also in `CODEOWNERS.md`.
 - `src/localai/safety/pathsafe.py` — containment and junction escapes
 - `src/localai/safety/sensitive.py` — credential classification
 - `src/localai/safety/injection.py` — prompt-injection detection
-- `src/localai/safety/recycle.py` — Win32 deletion
+- `src/localai/safety/recycle.py` — Recycle Bin (Win32) and freedesktop.org Trash
 - `src/localai/tools/runner.py` — the single execution path
 - `src/localai/tools/shell.py` — command execution
 - `src/localai/tools/fs_write.py` — filesystem mutation
@@ -318,8 +318,8 @@ Phase 1 is complete and tested. See `.project/status.json` for the machine-reada
 version, which is authoritative.
 
 **Built and tested:** model and provider discovery, model switching, streaming chat, the Textual UI,
-conversation storage with fork/export/search, usage tracking with provenance, 19 tools
-(filesystem read/write, PowerShell, Python, system, Git), the permissions engine with
+conversation storage with fork/export/search, usage tracking with provenance, 20 tools
+(filesystem read/write, PowerShell, bash, Python, system, Git), the permissions engine with
 four modes, audit logging, cancellation, configuration, the CLI, the installer.
 
 **Not built yet** (and reported as `false` by `localai capabilities --json`): document
@@ -327,5 +327,5 @@ extraction, semantic indexing, investigation mode, persistent memory, Modelfile
 management, fine-tuning integration, the local HTTP API, the MCP server.
 
 **Known limitations:** `/compact` truncates deterministically rather than summarising
-with the model. `list_processes` is Windows-only. Prompt-injection detection is a
+with the model. On macOS, deletes need `permanent=true` (no Trash support). Prompt-injection detection is a
 heuristic — the real guarantee is the permissions engine.

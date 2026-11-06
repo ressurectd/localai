@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import pytest
@@ -165,9 +166,17 @@ def test_ordinary_paths_are_not_classified(path: str) -> None:
     assert sensitive.classify_path(Path(path)) == []
 
 
-def test_system_directories_matter_only_for_mutation() -> None:
-    """Reading C:\\Windows is ordinary; writing to it is not."""
-    target = Path("C:/Windows/System32/drivers/etc/hosts")
+SYSTEM_TARGETS = (
+    ["C:/Windows/System32/drivers/etc/hosts", "C:/Program Files/App/app.exe"]
+    if sys.platform == "win32"
+    else ["/etc/hosts", "/usr/bin/python3", "/boot/vmlinuz", "/var/lib/dpkg/status"]
+)
+
+
+@pytest.mark.parametrize("path", SYSTEM_TARGETS)
+def test_system_directories_matter_only_for_mutation(path: str) -> None:
+    """Reading a system file is ordinary; writing to it is not."""
+    target = Path(path)
     assert not any(
         m.kind is sensitive.SensitiveKind.SYSTEM_DIRECTORY
         for m in sensitive.classify_path(target, mutating=False)
@@ -176,6 +185,27 @@ def test_system_directories_matter_only_for_mutation() -> None:
         m.kind is sensitive.SensitiveKind.SYSTEM_DIRECTORY
         for m in sensitive.classify_path(target, mutating=True)
     )
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX system layout")
+@pytest.mark.parametrize(
+    "path",
+    ["/tmp/scratch.txt", "/var/tmp/build.log", "/home/alice/project/main.py", "/etcetera/x"],
+)
+def test_ordinary_posix_paths_are_not_system_directories(path: str) -> None:
+    """Prefix matching is by path component: /etcetera is not /etc, and /var/tmp is not
+    flagged just because /var/lib is."""
+    assert not any(
+        m.kind is sensitive.SensitiveKind.SYSTEM_DIRECTORY
+        for m in sensitive.classify_path(Path(path), mutating=True)
+    )
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX system layout")
+def test_posix_system_directories_are_defined() -> None:
+    """Regression: on Linux the list used to be empty, so nothing was ever flagged."""
+    roots = {p.as_posix() for p in sensitive._system_directories()}
+    assert {"/etc", "/usr", "/boot", "/bin", "/sbin"} <= roots
 
 
 def test_every_match_carries_a_human_reason() -> None:

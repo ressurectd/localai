@@ -1,4 +1,4 @@
-"""PowerShell and Python execution.
+"""PowerShell, POSIX shell and Python execution.
 
 Security-sensitive module. Held to strict mypy settings and covered by
 ``tests/unit/test_shell_safety.py``.
@@ -10,11 +10,15 @@ Design decisions worth stating explicitly:
   supplied fragment into a template, because that is where injection lives.
 * **``-Command`` with an explicit argument list**, not ``shell=True``. The command
   text is passed as a single argv element, so the Windows command-line parser is not
-  given a second opportunity to reinterpret quoting.
+  given a second opportunity to reinterpret quoting. ``run_shell`` likewise passes the
+  approved string as the single argument to ``bash -c``.
 * **The full command is always displayed before execution** and recorded in the audit
   log, in every permission mode including bypass. A command that came from file
   content the model read is still shown in full before it runs.
 * **Output is streamed and bounded.** A runaway command cannot fill memory.
+* **On POSIX every command runs in its own process group**, and the whole group is
+  signalled on timeout or cancellation. Otherwise ``sleep 600 &`` would outlive the
+  shell, hold the output pipe open and leave the tool waiting forever.
 """
 
 from __future__ import annotations
@@ -23,6 +27,7 @@ import asyncio
 import os
 import re
 import shutil
+import signal
 import sys
 import tempfile
 from collections.abc import Callable
@@ -57,6 +62,31 @@ DESTRUCTIVE_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
         "changes file ownership or permissions",
     ),
     (re.compile(r"\bvssadmin\b.*delete", re.I), "deletes volume shadow copies"),
+    # POSIX shells
+    (
+        re.compile(r"\brm\s+(?:-\S+\s+)*(?:-[a-z]*r|--recursive)", re.I),
+        "recursive delete",
+    ),
+    (re.compile(r"\bmkfs(\.\w+)?\b|\bwipefs\b", re.I), "formats a volume"),
+    (
+        re.compile(r"\b(fdisk|sfdisk|gdisk|parted)\b|\bdd\b.*\bof=/dev/", re.I),
+        "writes to a disk device or its partitions",
+    ),
+    (re.compile(r">\s*/dev/(sd|nvme|hd|vd|mmcblk)", re.I), "writes to a disk device"),
+    (re.compile(r"\bshred\b", re.I), "securely wipes files"),
+    (
+        re.compile(r"\b(reboot|poweroff|halt)\b|\bsystemctl\s+(reboot|poweroff|halt)", re.I),
+        "shuts down or restarts",
+    ),
+    (re.compile(r"\b(kill|pkill|killall)\s+.*-(9|kill)\b", re.I), "force-terminates processes"),
+    (re.compile(r"\b(useradd|adduser|usermod|passwd)\b", re.I), "changes user accounts"),
+    (
+        re.compile(r"\b(chmod|chown|chgrp)\s+(?:-\S+\s+)*-[a-zA-Z]*R"),
+        "changes file ownership or permissions recursively",
+    ),
+    (re.compile(r"\bsudo\b|\bdoas\b|\bpkexec\b", re.I), "runs with elevated privileges"),
+    (re.compile(r"\bcrontab\s+-r\b", re.I), "removes the user's scheduled jobs"),
+    (re.compile(r"\bgit\s+push\b.*(--force\b|\s-f\b)", re.I), "force-pushes Git history"),
 )
 
 #: Patterns indicating the command reaches the network. Used to enforce
@@ -66,6 +96,12 @@ NETWORK_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"\bcurl\b|\bwget\b|\bnet\s+use\b", re.I),
     re.compile(r"\bstart-bitstransfer\b|\bdownload(file|string)\b", re.I),
     re.compile(r"\btest-netconnection\b|\bresolve-dnsname\b", re.I),
+    re.compile(r"\b(ssh|scp|sftp|rsync|nc|ncat|telnet|ftp)\s", re.I),
+    re.compile(r"\bgit\s+(clone|fetch|pull|push)\b", re.I),
+    re.compile(r"\b(pip3?|npm|pnpm|yarn|cargo|gem)\s+(install|add)\b", re.I),
+    re.compile(
+        r"\b(apt|apt-get|dnf|yum|pacman|zypper|apk|brew)\s+(install|update|upgrade|-S)", re.I
+    ),
 )
 
 
@@ -100,6 +136,34 @@ def find_powershell() -> Path | None:
     return None
 
 
+def find_posix_shell() -> Path | None:
+    """Locate a POSIX shell for ``run_shell``: bash if present, else sh.
+
+    Returns ``None`` on Windows even if a ``bash.exe`` is on PATH -- that is usually
+    the WSL launcher, which runs commands in a different filesystem namespace from
+    the one the permissions engine evaluated paths against.
+    """
+    if os.name == "nt":
+        return None
+    for executable in ("bash", "sh"):
+        if located := shutil.which(executable):
+            return Path(located)
+    return None
+
+
+def _signal_process(process: asyncio.subprocess.Process, *, kill: bool = False) -> None:
+    """Terminate (or kill) a process and, on POSIX, every process in its group."""
+    try:
+        if sys.platform != "win32":  # sys.platform, not os.name: the type checker narrows it
+            os.killpg(process.pid, signal.SIGKILL if kill else signal.SIGTERM)
+        elif kill:
+            process.kill()
+        else:
+            process.terminate()
+    except (ProcessLookupError, PermissionError):
+        pass
+
+
 async def _stream_process(
     argv: list[str],
     *,
@@ -108,6 +172,7 @@ async def _stream_process(
     max_bytes: int,
     cancel: asyncio.Event | None,
     on_output: Callable[[str], None] | None = None,
+    env: dict[str, str] | None = None,
 ) -> tuple[int | None, str, bool, bool]:
     """Run a process, streaming stdout+stderr. Returns (code, output, truncated, timed_out).
 
@@ -118,9 +183,12 @@ async def _stream_process(
         process = await asyncio.create_subprocess_exec(
             *argv,
             cwd=str(cwd),
+            env=env,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
             stdin=asyncio.subprocess.DEVNULL,  # never let a command block on input
+            # Its own process group, so a timeout or cancel reaches every child.
+            start_new_session=sys.platform != "win32",
         )
     except FileNotFoundError:
         return None, f"executable not found: {argv[0]}", False, False
@@ -152,8 +220,7 @@ async def _stream_process(
             await asyncio.Future()  # never completes
         else:
             await cancel.wait()
-            with __import__("contextlib").suppress(ProcessLookupError):
-                process.terminate()
+            _signal_process(process)
 
     pump_task = asyncio.create_task(pump())
     cancel_task = asyncio.create_task(watch_cancel())
@@ -162,15 +229,24 @@ async def _stream_process(
         await asyncio.wait_for(process.wait(), timeout=timeout)
     except TimeoutError:
         timed_out = True
+        _signal_process(process)
         try:
-            process.terminate()
             # Give it a moment to exit cleanly before escalating to a hard kill.
             await asyncio.wait_for(process.wait(), timeout=5.0)
-        except (TimeoutError, ProcessLookupError):
-            with __import__("contextlib").suppress(ProcessLookupError):
-                process.kill()
+        except TimeoutError:
+            _signal_process(process, kill=True)
+            await process.wait()
     finally:
         cancel_task.cancel()
+        try:
+            # A background child (``cmd &``) can keep the pipe open after the main
+            # process exits. Allow it a moment, then end the group so we return.
+            await asyncio.wait_for(asyncio.shield(pump_task), timeout=2.0)
+        except TimeoutError:
+            _signal_process(process, kill=True)
+            pump_task.cancel()
+        except Exception:  # noqa: S110 - the pump's own errors are not ours to raise
+            pass
         await asyncio.gather(pump_task, cancel_task, return_exceptions=True)
 
     raw = b"".join(chunks)
@@ -181,7 +257,11 @@ async def _stream_process(
 
 
 class RunPowerShell(Tool):
+    """Run a command through PowerShell. :class:`RunShell` reuses all of this."""
+
     name = "run_powershell"
+    #: Prefix of the confirmation string, e.g. ``powershell: <command>``.
+    label = "powershell"
     description = (
         "Run a PowerShell command and return its combined output. Use this for Windows "
         "administration, querying system state, and anything without a dedicated tool. "
@@ -219,16 +299,38 @@ class RunPowerShell(Tool):
         if network:
             annotations.append("makes a network request")
         suffix = f"  [{' | '.join(annotations)}]" if annotations else ""
-        return f"powershell: {command}{suffix}"
+        return f"{self.label}: {command}{suffix}"
+
+    def find_interpreter(self) -> Path | None:
+        return find_powershell()
+
+    def missing_interpreter_message(self) -> str:
+        return (
+            "PowerShell was not found. Install PowerShell 7 (pwsh) or ensure "
+            "powershell.exe is on PATH."
+            + ("" if os.name == "nt" else " On Linux and macOS, run_shell needs no install.")
+        )
+
+    def build_argv(self, interpreter: Path, command: str) -> list[str]:
+        return [
+            str(interpreter),
+            "-NoProfile",  # a user profile could redefine cmdlets used by the command
+            "-NonInteractive",  # a prompt would hang forever with stdin at /dev/null
+            "-ExecutionPolicy",
+            "Bypass",  # scoped to this process only; nothing persists
+            "-Command",
+            command,
+        ]
+
+    def build_env(self) -> dict[str, str] | None:
+        """Environment for the child process; ``None`` inherits ours unchanged."""
+        return None
 
     async def run(self, arguments: dict[str, Any], context: ToolContext) -> ToolResult:
         command = str(arguments["command"])
-        shell = find_powershell()
+        shell = self.find_interpreter()
         if shell is None:
-            return ToolResult.failure(
-                "PowerShell was not found. Install PowerShell 7 (pwsh) or ensure "
-                "powershell.exe is on PATH."
-            )
+            return ToolResult.failure(self.missing_interpreter_message())
 
         cwd = Path(str(arguments.get("working_directory") or context.cwd))
         if not cwd.is_dir():
@@ -248,15 +350,7 @@ class RunPowerShell(Tool):
             )
 
         timeout = float(arguments.get("timeout_seconds") or context.config.safety.shell_timeout_s)
-        argv = [
-            str(shell),
-            "-NoProfile",  # a user profile could redefine cmdlets used by the command
-            "-NonInteractive",  # a prompt would hang forever with stdin at /dev/null
-            "-ExecutionPolicy",
-            "Bypass",  # scoped to this process only; nothing persists
-            "-Command",
-            command,
-        ]
+        argv = self.build_argv(shell, command)
 
         code, output, truncated, timed_out = await _stream_process(
             argv,
@@ -264,6 +358,7 @@ class RunPowerShell(Tool):
             timeout=timeout,
             max_bytes=context.config.safety.max_output_bytes,
             cancel=context.cancel,
+            env=self.build_env(),
         )
 
         if timed_out:
@@ -294,6 +389,52 @@ class RunPowerShell(Tool):
                 "network": network,
             },
         )
+
+
+class RunShell(RunPowerShell):
+    """Run a command through bash (or sh) on Linux, macOS and other Unix systems.
+
+    Identical in every safety-relevant respect to ``run_powershell``: same risk,
+    same verbatim confirmation string, same destructive and network classification,
+    same bounded output. Only the interpreter and its argv differ.
+    """
+
+    name = "run_shell"
+    label = "shell"
+    description = (
+        "Run a shell command with bash (or sh if bash is absent) and return its combined "
+        "output. Use this on Linux and macOS for querying system state, running build "
+        "tools, and anything without a dedicated tool. Not available on Windows; use "
+        "run_powershell there. The command is shown to the user before it runs."
+    )
+    parameters = {
+        "type": "object",
+        "properties": {
+            "command": {"type": "string", "description": "The shell command to run."},
+            "working_directory": {"type": "string", "description": "Defaults to the session cwd."},
+            "timeout_seconds": {"type": "number", "minimum": 1, "maximum": 600},
+        },
+        "required": ["command"],
+    }
+
+    def find_interpreter(self) -> Path | None:
+        return find_posix_shell()
+
+    def missing_interpreter_message(self) -> str:
+        if os.name == "nt":
+            return "run_shell is not available on Windows. Use run_powershell instead."
+        return "No POSIX shell was found: neither bash nor sh is on PATH."
+
+    def build_argv(self, interpreter: Path, command: str) -> list[str]:
+        if interpreter.name == "bash":
+            # Startup files could redefine commands the user approved by name.
+            return [str(interpreter), "--noprofile", "--norc", "-c", command]
+        return [str(interpreter), "-c", command]
+
+    def build_env(self) -> dict[str, str] | None:
+        # Non-interactive bash sources $BASH_ENV, and sh sources $ENV, even with
+        # --norc. Either could silently redefine the commands the user approved.
+        return {k: v for k, v in os.environ.items() if k not in ("BASH_ENV", "ENV")}
 
 
 class RunPython(Tool):

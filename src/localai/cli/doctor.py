@@ -56,6 +56,7 @@ async def run_checks(app: Application) -> list[Check]:
         _config_check(app),
         _permissions_check(app),
         _powershell_check(),
+        _posix_shell_check(),
         _git_check(),
         _disk_check(app),
         _extractors_check(),
@@ -203,7 +204,7 @@ def _config_check(app: Application) -> Check:
             "config",
             "warn",
             "no config file; using defaults",
-            "Create one with: ai config init",
+            "Create one with: localai config init",
             {"path": str(app.paths.config_file)},
         )
     return Check(
@@ -256,10 +257,18 @@ def _permissions_check(app: Application) -> Check:
 
 
 def _powershell_check() -> Check:
-    from localai.tools.shell import find_powershell
+    from localai.tools.shell import find_posix_shell, find_powershell
 
     shell = find_powershell()
     if shell is None:
+        if os.name != "nt" and find_posix_shell() is not None:
+            # Optional off Windows: run_shell covers the same ground.
+            return Check(
+                "powershell",
+                "ok",
+                "not installed (optional here; run_shell uses bash/sh)",
+                data={"path": None},
+            )
         return Check(
             "powershell",
             "warn",
@@ -267,6 +276,22 @@ def _powershell_check() -> Check:
             "Install PowerShell 7 (pwsh) to enable the run_powershell tool.",
         )
     return Check("powershell", "ok", str(shell), data={"path": str(shell)})
+
+
+def _posix_shell_check() -> Check:
+    from localai.tools.shell import find_posix_shell
+
+    if os.name == "nt":
+        return Check("shell", "ok", "not applicable on Windows (use run_powershell)")
+    shell = find_posix_shell()
+    if shell is None:
+        return Check(
+            "shell",
+            "warn",
+            "neither bash nor sh found on PATH",
+            "Install bash to enable the run_shell tool.",
+        )
+    return Check("shell", "ok", str(shell), data={"path": str(shell)})
 
 
 def _git_check() -> Check:

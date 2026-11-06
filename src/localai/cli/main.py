@@ -227,6 +227,9 @@ def cmd_version(args: argparse.Namespace, mode: OutputMode) -> int:
 async def cmd_capabilities(args: argparse.Namespace, mode: OutputMode) -> int:
     """Describe the build so an external agent need not read the source."""
     async with _build_app(args) as app:
+        from localai.safety.recycle import available as recycle_available
+        from localai.tools.shell import find_posix_shell
+
         reachable, detail = await app.provider.health()
         payload: dict[str, Any] = {
             "versions": version_info(),
@@ -251,7 +254,9 @@ async def cmd_capabilities(args: argparse.Namespace, mode: OutputMode) -> int:
                 "usage_tracking": True,
                 "conversation_storage": True,
                 "conversation_search": app.database.fts_available,
-                "recycle_bin_delete": sys.platform == "win32",
+                # True on Windows (Recycle Bin) and Linux (freedesktop.org Trash).
+                "recycle_bin_delete": recycle_available(),
+                "posix_shell": find_posix_shell() is not None,
                 "backups": True,
                 "dry_run": True,
                 "document_extraction": False,

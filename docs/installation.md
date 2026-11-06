@@ -2,11 +2,48 @@
 
 ## Requirements
 
-- **Windows 10/11** (primary target; the core runs elsewhere, but `list_processes` and
-  Recycle Bin deletion are Windows-only)
+- **Windows 10/11** (primary target) or **Linux**. Every tool works on Linux: deletes
+  go to the freedesktop.org Trash, `run_shell` replaces PowerShell (which remains
+  available if `pwsh` is installed), and `list_processes` reads `/proc`. On macOS the
+  core works, but deletion requires `permanent=true`.
 - **Python 3.11+**
 - **Ollama** with at least one model
 - Windows Terminal recommended; classic PowerShell and cmd work
+
+## Linux
+
+```bash
+git clone <repo> localai && cd localai
+./install.sh
+```
+
+`install.sh` mirrors `install.ps1`: it checks for Python 3.11+ and Ollama, creates an
+isolated virtualenv in the folder, installs localai, writes the `ai` and `localai`
+launchers, and finishes by running `localai doctor`. It needs no root and installs
+nothing system-wide. It is POSIX `sh`, so it runs under bash, dash and busybox.
+
+```bash
+./install.sh --with-extractors   # + PDF/Word/Excel/PowerPoint/RTF/HTML (~40 MB)
+./install.sh --portable          # state beside the install, for a USB stick
+./install.sh --no-path-update    # do not create launchers in ~/.local/bin
+./install.sh --yes               # unattended: accept every default
+```
+
+**PATH.** Rather than editing your shell startup files, it offers to put two small
+wrapper scripts in `~/.local/bin`, the per-user directory most distributions already
+have on `PATH`. If it is not on yours, the installer prints the one line to add. It
+never replaces an existing `~/.local/bin/ai` that it did not create; `ai` is a common
+command name, so in that case use `localai`.
+
+**Debian and Ubuntu** need the `python3-venv` package; the installer checks for it
+and names the package if it is missing.
+
+For development, use `python3 tasks.py setup` instead, which also installs the test
+and lint tools.
+
+Configuration and data live in `$LOCALAI_HOME`, else `$XDG_DATA_HOME/localai`
+(normally `~/.local/share/localai`). Deleted files go to `~/.local/share/Trash`, where
+your file manager or `gio trash --list` can restore them.
 
 ## Quick install — the installer
 
@@ -163,6 +200,17 @@ preserved.
 ```powershell
 .\uninstall.ps1
 ```
+
+On Linux:
+
+```bash
+./uninstall.sh                   # program only; your data is kept
+./uninstall.sh --remove-data     # also data, after you type DELETE
+```
+
+`uninstall.sh` removes the virtualenv and only the `~/.local/bin` launchers that
+`install.sh` created (each carries a marker line). Items localai moved to your Trash
+stay there.
 
 Removes the virtualenv, launcher and PATH entry. **Your data is kept** unless you pass
 `-RemoveData`, and even then it tells you how many conversations you are about to lose

@@ -1,7 +1,7 @@
 {
   "$comment": "Machine-readable project status. Updated as part of significant implementation work. NOT a substitute for running the tests or reading the source - see HANDOFF.md and AGENTS.md.",
   "schema": "localai.project-status/1",
-  "updated_at": "2026-07-18",
+  "updated_at": "2026-10-31",
   "phase": {
     "current": 1,
     "name": "Functional first version",
@@ -28,18 +28,18 @@
     "fts5_optional_fallback": "LIKE substring search"
   },
   "tests": {
-    "last_run": "2026-07-18",
+    "last_run": "2026-10-31",
     "result": "pass",
-    "total": 408,
-    "security_marked": 136,
-    "unit_files": 7,
+    "total": 470,
+    "security_marked": 167,
+    "unit_files": 9,
     "integration_files": 3,
     "command": "python tasks.py test"
   },
   "quality_gates": {
     "ruff_check": "clean",
     "ruff_format": "clean",
-    "mypy": "clean (52 source files, strict on security-sensitive modules)",
+    "mypy": "clean (54 source files, strict on security-sensitive modules; also clean with --platform win32/linux/darwin)",
     "validate_docs": "clean",
     "command": "python tasks.py check"
   },
@@ -70,6 +70,8 @@
     "automatic_backups",
     "diff_preview",
     "powershell_execution",
+    "posix_shell_execution",
+    "linux_support",
     "python_execution",
     "system_inspection_tools",
     "git_readonly_tool",
@@ -119,15 +121,9 @@
       "location": "src/localai/ui/app.py::_compact_context"
     },
     {
-      "feature": "list_processes",
-      "state": "Windows only",
-      "missing": "POSIX implementation",
-      "location": "src/localai/tools/system.py"
-    },
-    {
       "feature": "recycle_bin_deletion",
-      "state": "Windows only",
-      "missing": "Freedesktop trash spec for Linux. Falls back to an explicit permanent-delete confirmation elsewhere.",
+      "state": "Windows (Recycle Bin) and Linux (freedesktop.org Trash)",
+      "missing": "macOS Trash. Falls back to an explicit permanent-delete confirmation there.",
       "location": "src/localai/safety/recycle.py"
     },
     {
