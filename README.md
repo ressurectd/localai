@@ -1,41 +1,20 @@
-<div align="center">
-
 ```
         ██████   ██
        ██    ██  ▀▀
        ████████  ██
        ██    ██  ██
 ```
+local models · your files · your machine
 
-### local models · your files · your machine
+ai is a terminal interface for local Ollama models. It can read files, run commands and make changes on your machine, with permission checks around every tool call. No hosted model or account required.
 
-An agentic terminal for the models you already have in [Ollama](https://ollama.com).
-It gives a local model controlled access to your filesystem and shell, behind a
-permissions engine modelled on coding agents like Claude Code — except nothing ever
-leaves your computer.
+License: MIT Python 3.11+ Windows CI
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-black.svg?style=flat-square)](LICENSE.txt)
-[![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB.svg?style=flat-square&logo=python&logoColor=white)](https://www.python.org/downloads/)
-[![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4.svg?style=flat-square&logo=windows&logoColor=white)](docs/installation.md)
-[![CI](https://img.shields.io/github/actions/workflow/status/OWNER/REPO/ci.yml?branch=main&style=flat-square&label=CI)](../../actions)
+Tests Security boundaries Ruff mypy Textual
 
-[![Tests](https://img.shields.io/badge/tests-408%20passing-2dd4a7.svg?style=flat-square)](docs/testing.md)
-[![Security boundaries](https://img.shields.io/badge/security%20boundaries-137%20tests-c74440.svg?style=flat-square)](docs/security-model.md)
-[![Ruff](https://img.shields.io/badge/lint-ruff-D7FF64.svg?style=flat-square&logo=ruff&logoColor=black)](https://docs.astral.sh/ruff/)
-[![mypy](https://img.shields.io/badge/types-mypy%20strict-1f5a2f.svg?style=flat-square)](pyproject.toml)
-[![Textual](https://img.shields.io/badge/TUI-Textual-b57bff.svg?style=flat-square)](https://textual.textualize.io/)
+No telemetry Loopback only No account
 
-[![No telemetry](https://img.shields.io/badge/telemetry-none-2dd4a7.svg?style=flat-square)](docs/privacy.md)
-[![Loopback only](https://img.shields.io/badge/network-loopback%20only-2dd4a7.svg?style=flat-square)](docs/privacy.md)
-[![No account](https://img.shields.io/badge/account-not%20required-2dd4a7.svg?style=flat-square)](docs/privacy.md)
-
-[Install](#install) · [Quick tour](#quick-tour) · [Permissions](#permission-modes) ·
-[Safety](#safety) · [Privacy](#privacy) · [For coding agents](#for-ai-coding-agents) ·
-[Docs](#documentation)
-
-</div>
-
----
+Install · Quick tour · Permissions · Safety · Privacy · For coding agents · Docs
 
 ```
  ◆ qwen3:8b   ▸ D:\Work\project   ████░░░░░░░░ ~4,210/40,960
@@ -57,111 +36,46 @@ leaves your computer.
 
 ## Why
 
-Cloud coding agents are excellent, and sending your files to one is a choice you
-should get to make deliberately.
+I use Ollama, but a chat prompt only goes so far when the work is sitting in files and terminals. I wanted to give local models access to that work without handing over the whole machine.
 
-Ollama already runs capable models locally, but talking to them means a bare prompt
-with no access to anything. The gap is not the model — it is everything around it:
-tools, a permissions layer you can trust, a record of what happened, and an interface
-you do not mind living in.
-
-That is what this is.
+ai adds file and shell tools, permission checks, an audit log and a terminal interface. It talks to Ollama running on your machine.
 
 ## What it does
 
-**Talks to your installed models.** Detects them automatically, switches without
-restarting, and shows what each one can actually do — `ai providers scan` reports
-which models support native tool calling and which fall back to a text protocol.
+Installed Ollama models are detected automatically, and you can switch between them without restarting. ai providers scan checks whether they support native tool calling or need the text fallback.
 
-**Gives the model real tools.** Twenty of them: read and search files, inspect
-metadata, hash, find duplicates, write, edit, move, delete, run PowerShell, bash and Python,
-inspect the system and Git.
+The model gets 19 tools for reading, searching and modifying files; checking metadata and hashes; finding duplicates; running PowerShell or Python; and inspecting Git or system information.
 
-**Asks before it acts.** Four permission modes, from confirming everything to full
-autonomy. Even at full autonomy every action is displayed and written to an
-append-only audit log.
+Four permission modes cover anything from approving every read to running without prompts. Actions remain visible and are written to an append-only audit log.
 
-**Is reversible.** Deletes go to the Recycle Bin. Edits are backed up first and shown
-as a diff. Dry-run simulates without touching anything.
+Deletes go to the Recycle Bin. Edits get a backup and a diff, and dry-run simulates changes without making them.
 
-**Tells the truth about tokens.** Counts are labelled `reported` or `estimated` and
-never conflated. Thinking tokens are always marked estimates, because Ollama counts
-them inside completion tokens and does not report them separately.
+Usage reports separate actual token counts from estimates. Ollama does not report thinking tokens separately, so those numbers are estimated.
 
-**Works for scripts and coding agents too.** A full non-interactive CLI with `--json`
-on everything, meaningful exit codes and versioned output schemas.
+There is also a non-interactive CLI with --json output, meaningful exit codes and versioned schemas for scripts or coding agents.
 
 ## Install
 
-Download `ai-setup-<version>.exe` from [Releases](../../releases) and run it. Standard
-Windows wizard, per-user install, no admin rights.
+Download ai-setup-\<version\>.exe from Releases and run the installer. It installs per user and does not need administrator access.
 
-**Python is not required** — the installer bundles everything. You do need Ollama and
-at least one model:
+The installer includes Python. You only need Ollama and a model:
 
-```powershell
+```
 winget install Ollama.Ollama
 ollama pull qwen3:8b
 ```
 
-Then open a new terminal:
+Open a new terminal and run:
 
-```powershell
+```
 ai
 ```
 
-<details>
-<summary><b>Install from source instead</b></summary>
-
-<br>
-
-```powershell
-git clone <repo> localai
-cd localai
-.\install.ps1
-```
-
-Needs Python 3.11+. Creates an isolated virtualenv, writes `ai` and `localai`
-launchers, optionally adds them to your PATH, and finishes by running diagnostics.
-Full guide: [docs/installation.md](docs/installation.md).
-
-</details>
-
-<details>
-<summary><b>Linux</b></summary>
-
-<br>
-
-```bash
-git clone <repo> localai && cd localai
-./install.sh
-ai
-```
-
-Needs Python 3.11+, no root. The same checks and launchers as `install.ps1`, with
-launchers placed in `~/.local/bin`. Deletes go to the freedesktop.org Trash, and the model gets `run_shell` (bash)
-alongside `run_python`. See [docs/installation.md](docs/installation.md#linux).
-
-</details>
-
-<details>
-<summary><b>The executable is unsigned</b></summary>
-
-<br>
-
-SmartScreen will show *"Windows protected your PC"* on first run — choose
-**More info → Run anyway**. That is normal for unsigned software and does not indicate
-anything is wrong. Verify the download against `SHA256SUMS.txt` if you would rather
-check.
-
-Signing requires a code-signing certificate (roughly £200–400/year). Worth it for wide
-distribution; not for a handful of users.
-
-</details>
+Install from source instead · The executable is unsigned
 
 ## Quick tour
 
-```powershell
+```
 ai                       # the terminal interface
 ai doctor                # check the environment; every problem comes with a fix
 ai providers scan        # what is installed, and how well each model can be driven
@@ -170,10 +84,9 @@ ai chat --model qwen3:8b --prompt "what is in this folder?" --tools
 ai usage report --period week
 ```
 
-### Type `/` for anything
+Type / for anything
 
-A menu rises above the prompt and filters as you type. `↑↓` to choose, `Tab` to
-complete, `Enter` to run.
+The command menu opens above the prompt and filters as you type. Use ↑↓ to move, Tab to complete and Enter to run.
 
 ```
  ❯ /model     model picker
@@ -182,25 +95,20 @@ complete, `Enter` to run.
    ↑↓ choose · Tab complete · Enter run · Esc dismiss
 ```
 
-Twenty-eight commands. `/help` lists them all with every keyboard shortcut.
+There are 28 commands. /help shows the full list and keyboard shortcuts.
 
-### Watch it think
+## Watch it think
 
 ```
  ◐ Qwen is thinking  ▃▄▅▆▇█▇▆▅▄▃▂▁▂  3.4s
    considering whether the budget figure appears twice...
 ```
 
-Three things at a glance: that it is working, how long it has been, and roughly what
-about. The caption shows the last complete *phrase* of the reasoning rather than a
-stream of half-words — updating on every token strobes, and is harder to read than
-nothing. When the answer starts, it folds away into `▸ thought for 3.4s`.
+While a model is reasoning, the interface shows elapsed time and a short caption. The caption updates a phrase at a time instead of flickering with every token. Once the answer starts, the indicator collapses to ▸ thought for 3.4s.
 
-### Know which model you are talking to
+## Know which model you are talking to
 
-Each family has its own colour and mark. Switch to DeepSeek and the interface turns
-abyssal blue; switch to Qwen and it goes jade. The top bar, the prompt border and the
-model's own messages all move together.
+Model families have their own colours and marks. DeepSeek uses blue, Qwen uses jade, and the top bar, prompt border and model messages change together.
 
 ```
    ▄▄▄▄▄▄▄▄▄▄▄▄▄▄       ░▒▓████████▓▒░          ▄██████▄
@@ -212,139 +120,112 @@ model's own messages all move together.
         Qwen                 DeepSeek               Gemma
 ```
 
-That is not only decoration — a 27B model with a 262k context behaves very differently
-from a 3B one, and the permissions you are comfortable granting may differ too. Colour
-carries that faster than reading a name does.
+It also makes model switches harder to miss. A small model and a 27B model with a 262k context need different expectations, especially when tools are enabled.
 
-Fourteen themes via `/theme`, including `tokyo-night`, `gruvbox`, `catppuccin-mocha`,
-plus **synthwave** and **matrix**.
+/theme has 14 options, including tokyo-night, gruvbox, catppuccin-mocha, synthwave and matrix.
 
 ## Permission modes
 
 | Mode | Behaviour |
-|:--|:--|
-| `manual` | Confirms every action, including reading a file. |
-| **`auto`** | **Default.** Reads run freely; changes and commands ask first. |
-| `workspace` | Free rein inside directories you have trusted; asks everywhere else. |
-| `bypass` | No prompts. Everything still shown and logged. |
+|---|---|
+| manual | Confirms every action, including reading a file. |
+| auto | Default. Reads run freely; changes and commands ask first. |
+| workspace | Free rein inside directories you have trusted; asks everywhere else. |
+| bypass | No prompts. Everything still shown and logged. |
 
-Bypass cannot be reached by a keystroke — it requires typing a confirmation phrase
-into a dialog that spells out the consequences. And even in bypass:
+Bypass requires a typed confirmation phrase; there is no keyboard shortcut for it. It skips approval prompts, but some safeguards remain:
 
 - every action is displayed and written to an append-only audit log
-- `ai`'s own config, database and audit log stay unwritable by any tool
-- `Ctrl+Q` stops everything instantly and engages a global kill switch
+- ai's own config, database and audit log stay unwritable by any tool
+- Ctrl+Q stops everything instantly and engages a global kill switch
 - deletions still go to the Recycle Bin
 
-Every interface — TUI, CLI, and later the local API and MCP server — goes through one
-`PermissionEngine.evaluate` call. There is no second path, and a test asserts all four
-produce identical verdicts for identical requests.
+Permission decisions live in PermissionEngine.evaluate. The TUI and CLI use that path, and the planned local API and MCP server are designed around it too. Tests check that the same request gets the same decision.
 
-You can ask it why it decided something:
+To inspect a permission decision:
 
-```powershell
+```
 ai permissions explain --action request.json --json
 ```
 
-→ [docs/permissions-engine.md](docs/permissions-engine.md)
+→ docs/permissions-engine.md
 
 ## Safety
 
-Anything a model reads is untrusted input. If a document tries to instruct it —
-*"ignore previous instructions"*, a hidden Unicode payload, a fake system prompt — the
-content is fenced in an explicit envelope, flagged in the interface, and recorded in
-the audit log.
+Model input is treated as untrusted, including files read through tools. Suspected prompt injections — instructions in documents, hidden Unicode or fake system messages — are marked in the interface, wrapped as untrusted content and logged.
 
 ```
  ☣ This content tried to instruct the model (injection:instruction_override).
    It is marked as untrusted data.
 ```
 
-That detection is a heuristic and is documented as one. **The real guarantee is the
-permissions engine:** a successful injection still cannot make a consequential change
-without your approval.
+The detector is heuristic; it can miss things. Permission checks are the main safeguard against unapproved changes.
 
-Paths are contained on their **resolved real path**, so `..` traversal and Windows
-junctions cannot smuggle an operation out of a trusted workspace. There is a test that
-creates a real junction pointing outside the workspace and asserts the escape is
-caught.
+Workspace boundaries are checked against resolved paths, not just the path the model supplied. That covers .. traversal and Windows junctions. A regression test creates a junction pointing outside the workspace and checks that access is denied.
 
-→ [docs/security-model.md](docs/security-model.md), including what is **not** defended
-against.
+→ docs/security-model.md, including what is not defended against.
 
 ## Privacy
 
-The only network traffic by default is to `127.0.0.1:11434` — your own Ollama daemon.
+By default, ai connects only to Ollama at 127.0.0.1:11434.
 
-- No account, no telemetry, no analytics, no crash reporting, no update check.
-- `privacy.telemetry` is typed `Literal[False]`, so it **cannot be enabled** even by
-  editing the config file.
-- The HTTP client sets `trust_env=False`, so a system proxy cannot silently route
-  local traffic off-device.
-- `/context` shows exactly what is sent to the model. No hidden memory, no invisible
-  preamble.
+- No account, telemetry, analytics, crash reporting or update checks.
+- privacy.telemetry is typed Literal[False]; changing the config cannot enable it.
+- The HTTP client uses trust_env=False, so it does not pick up proxy settings from the environment.
+- /context shows what goes into the model request. There is no hidden memory or preamble.
 
-→ [docs/privacy.md](docs/privacy.md)
+→ docs/privacy.md
 
 ## For AI coding agents
 
-This repository is built to be worked on by Claude Code, Codex, Cursor and similar.
+The repo is set up for development with Claude Code, Codex, Cursor and other coding agents.
 
-**Start with [AGENTS.md](AGENTS.md).** Then:
+Read AGENTS.md first. The useful entry points are:
 
-```bash
+```
 ai capabilities --json     # what is built vs. planned — honest, not aspirational
 ai architecture --json     # layers, dependencies, invariants
 python tasks.py check      # the one gate: format, lint, typecheck, test, docs
 ```
 
-`capabilities --json` reports unbuilt features as `false` rather than omitting them,
-so you can trust it when deciding whether something needs building. You should never
-need to scrape the terminal UI or guess how to build anything.
+Unbuilt features appear as false in ai capabilities --json instead of disappearing from the output. The architecture and capability commands are there so tools can inspect the project without scraping the UI.
 
 ## Documentation
 
-| | |
-|:--|:--|
-| [AGENTS.md](AGENTS.md) | Canonical guide for coding agents; fastest human orientation |
-| [docs/user-guide.md](docs/user-guide.md) | Using the interface |
-| [docs/installation.md](docs/installation.md) | Install, upgrade, uninstall |
-| [docs/permissions-engine.md](docs/permissions-engine.md) | How access is decided |
-| [docs/security-model.md](docs/security-model.md) | Threat model, and what is *not* defended |
-| [docs/privacy.md](docs/privacy.md) | What is stored, what never leaves |
-| [docs/architecture.md](docs/architecture.md) | Design, and why |
-| [docs/tool-api.md](docs/tool-api.md) | Writing a tool |
-| [docs/development.md](docs/development.md) | Working on `ai` |
-| [docs/testing.md](docs/testing.md) | Test strategy |
-| [docs/database-schema.md](docs/database-schema.md) | Schema and migrations |
-| [docs/training.md](docs/training.md) | Prompting vs. memory vs. RAG vs. fine-tuning |
-| [docs/release-process.md](docs/release-process.md) | Versioning and building a release |
-| [docs/troubleshooting.md](docs/troubleshooting.md) | When something breaks |
+| File | Contents |
+|---|---|
+| AGENTS.md | Canonical guide for coding agents; fastest human orientation |
+| docs/user-guide.md | Using the interface |
+| docs/installation.md | Install, upgrade, uninstall |
+| docs/permissions-engine.md | How access is decided |
+| docs/security-model.md | Threat model, and what is not defended |
+| docs/privacy.md | What is stored, what never leaves |
+| docs/architecture.md | Design, and why |
+| docs/tool-api.md | Writing a tool |
+| docs/development.md | Working on ai |
+| docs/testing.md | Test strategy |
+| docs/database-schema.md | Schema and migrations |
+| docs/training.md | Prompting vs. memory vs. RAG vs. fine-tuning |
+| docs/release-process.md | Versioning and building a release |
+| docs/troubleshooting.md | When something breaks |
 
 ## Status
 
-**Phase 1 is complete and tested.** 408 tests, 137 of them security boundaries.
+Phase 1 is complete: 408 tests, including 137 security-boundary tests.
 
-<table>
-<tr>
-<td valign="top" width="50%">
-
-**Built**
+### Built
 
 - Model detection, switching, provider discovery
 - Streaming chat with live reasoning display
 - Terminal UI: command menu, pickers, 14 themes
-- 20 tools behind one execution path
+- 19 tools behind one execution path
 - Permissions engine, 4 modes, audit log
 - Conversation storage, fork, export, search
 - Usage tracking with honest provenance
 - Non-interactive CLI with versioned JSON
 - Installer and standalone executable
 
-</td>
-<td valign="top" width="50%">
-
-**Not built yet**
+### Not built yet
 
 - Document extraction (PDF, Word, Excel…)
 - Semantic indexing / RAG
@@ -355,48 +236,31 @@ need to scrape the terminal UI or guess how to build anything.
 - MCP server
 - LoRA / QLoRA fine-tuning
 
-</td>
-</tr>
-</table>
+Planned features are marked false in ai capabilities --json until they are implemented.
 
-Everything in the right-hand column is reported as `false` by
-`ai capabilities --json`. Nothing claims to work that has not been run.
+The machine-readable status is in .project/status.json. HANDOFF.md has the current development handoff.
 
-See [.project/status.json](.project/status.json) for the machine-readable version, and
-[HANDOFF.md](HANDOFF.md) to pick up where this left off.
+## Known limitations
 
-### Known limitations
-
-- `/compact` truncates deterministically rather than summarising with the model.
-  Deliberate for now: a mechanical drop is predictable, whereas a generated summary
-  can quietly invent things you said.
-- On macOS, deletion requires `permanent=true` (there is no Trash support yet).
-- Prompt-injection detection is heuristic; the guarantee is the permissions engine.
+- /compact currently drops older context rather than generating a summary. It is predictable, but can discard useful information.
+- list_processes and Recycle Bin deletion work on Windows only.
+- Prompt-injection detection is heuristic. The permissions engine is the main security boundary.
 
 ## Contributing
 
-```powershell
+```
 python tasks.py setup
 python tasks.py check
 ```
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md). If you touch anything listed in
-[CODEOWNERS.md](CODEOWNERS.md), run `python tasks.py test-security` — and if a
-boundary test fails, **the test is right**.
+Read CONTRIBUTING.md before opening a PR. For changes covered by CODEOWNERS.md, run python tasks.py test-security. A failing boundary test needs investigation, not a workaround.
 
 ## Built with
 
-[Textual](https://textual.textualize.io/) · [httpx](https://www.python-httpx.org/) ·
-[pydantic](https://docs.pydantic.dev/) · [Rich](https://rich.readthedocs.io/) ·
-[Ollama](https://ollama.com)
+Textual · httpx · pydantic · Rich · Ollama
 
-Five runtime dependencies, all widely used and actively maintained. Recycle Bin and
-Trash deletion are reviewed in-tree code rather than a sixth — see the
-[dependency policy](docs/security-model.md#dependency-policy).
+Five runtime dependencies. Recycle Bin deletion uses about 40 lines of ctypes rather than adding another package; details are in the dependency policy.
 
-<div align="center">
-<br>
+---
 
-**[MIT](LICENSE.txt)** · Built for people who want the agent, not the cloud.
-
-</div>
+MIT · Local models, local tools, local control.
